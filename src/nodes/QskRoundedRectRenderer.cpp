@@ -244,12 +244,6 @@ namespace
     };
 }
 
-
-static inline Qt::Orientation qskQtOrientation( const QskGradient& gradient )
-{
-    return gradient.linearDirection().isVertical() ? Qt::Vertical : Qt::Horizontal;
-}
-
 static inline int qskFillLineCount(
     const QskRoundedRect::Metrics& metrics, const QskGradient& gradient )
 {
@@ -323,10 +317,21 @@ static inline int qskFillLineCount(
 }
 
 static inline void qskRenderBorder( const QskRoundedRect::Metrics& metrics,
-    Qt::Orientation orientation, const QskBoxBorderColors& colors, ColoredLine* lines )
+    const QskGradient& gradient, const QskBoxBorderColors& colors, ColoredLine* lines )
 {
+    // gradient is needed to know about the start/endpoint of the border lines
+
     QskRoundedRect::Stroker stroker( metrics );
-    stroker.createBorderLines( orientation, lines, colors );
+    stroker.createUniformBox( lines, colors, nullptr, gradient );
+}
+
+static inline void qskRenderFilling( const QskRoundedRect::Metrics& metrics,
+    const QskGradient& gradient, ColoredLine* lines )
+{
+    static const QskBoxBorderColors noBorderColors;
+
+    QskRoundedRect::Stroker stroker( metrics );
+    stroker.createUniformBox( nullptr, noBorderColors, lines, gradient );
 }
 
 static inline void qskRenderUniformBox(
@@ -633,8 +638,7 @@ void QskRoundedRectRenderer::renderRect( const QRectF& rect,
             if ( extraLine )
                 borderLines++;
 
-            const auto orientation = qskQtOrientation( gradient );
-            qskRenderBorder( metrics, orientation, borderColors, borderLines );
+            qskRenderBorder( metrics, gradient, borderColors, borderLines );
 
             if ( extraLine )
             {
@@ -648,8 +652,7 @@ void QskRoundedRectRenderer::renderRect( const QRectF& rect,
     {
         if ( isUniform )
         {
-            QskRoundedRect::Stroker stroker( metrics );
-            stroker.createFillLines( lines, gradient );
+            qskRenderFilling( metrics, gradient, lines );
         }
         else
         {
@@ -670,6 +673,6 @@ void QskRoundedRectRenderer::renderRect( const QRectF& rect,
     }
     else if ( borderLineCount > 0 )
     {
-        qskRenderBorder( metrics, Qt::Vertical, borderColors, lines );
+        qskRenderBorder( metrics, gradient, borderColors, lines );
     }
 }

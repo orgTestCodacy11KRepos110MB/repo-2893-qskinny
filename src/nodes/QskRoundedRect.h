@@ -126,11 +126,6 @@ namespace QskRoundedRect
 
         void createBorderLines( QskVertex::Line* ) const;
 
-        void createFillLines( QskVertex::ColoredLine*, const QskGradient& ) const;
-
-        void createBorderLines( Qt::Orientation,
-            QskVertex::ColoredLine*, const QskBoxBorderColors& ) const;
-
         void createUniformBox( QskVertex::ColoredLine*, const QskBoxBorderColors&,
             QskVertex::ColoredLine*, const QskGradient& ) const;
 
