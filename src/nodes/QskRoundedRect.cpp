@@ -26,18 +26,20 @@ namespace
         return qMax( 0, gradient.stepCount() - 1 );
     }
 
-    inline void setBorderGradientLine(
-        const QskVertex::Line& l, float dx1, float dy1, float dx2, float dy2,
-        const QskGradientStop& stop, QskVertex::ColoredLine* lines )
+    static inline void setGradientLineAt(
+        Qt::Orientation orientation, qreal x1, qreal y1, qreal x2, qreal y2,
+        const QskGradientStop& stop, QskVertex::ColoredLine* line )
     {
-        const auto pos = stop.position();
-
-        const float x1 = l.p1.x + pos * dx1;
-        const float y1 = l.p1.y + pos * dy1;
-        const float x2 = l.p2.x + pos * dx2;
-        const float y2 = l.p2.y + pos * dy2;
-
-        lines->setLine( x1, y1, x2, y2, stop.rgb() );
+        if ( orientation == Qt::Horizontal )
+        {
+            const auto pos = x1 + stop.position() * ( x2 - x1 );
+            line->setLine( pos, y1, pos, y2, stop.rgb() );
+        }
+        else
+        {
+            const auto pos = y1 + stop.position() * ( y2 - y1 );
+            line->setLine( x1, pos, x2, pos, stop.rgb() );
+        }
     }
 
     class ColorMap
@@ -345,111 +347,90 @@ void QskRoundedRect::BorderValues::setAngle( qreal cos, qreal sin )
 }
 
 void QskRoundedRect::Stroker::setBorderGradientLines(
-    const BorderValues& v, int c1, const QskGradient& gradient,
+    Qt::Edge edge, const QskBoxBorderColors& colors,
     QskVertex::ColoredLine* lines ) const
 {
+    const auto& gradient = colors.gradientAt( edge );
     if( gradient.stepCount() <= 1 )
     {
         // everything done as contour lines
         return;
     }
 
-    QskVertex::Line from, to;
+    qreal x1, x2, y1, y2;
+    Qt::Orientation orientation;
 
-    const auto& c = m_metrics.corner;
-
-    switch( c1 )
+    switch( edge )
     {
-        case TopLeft:
+        case Qt::LeftEdge:
         {
-            const auto c2 = BottomLeft;
+            const auto& c1 = m_metrics.corner[ BottomLeft ];
+            const auto& c2 = m_metrics.corner[ TopLeft ];
 
-            to.p1.x = c[ c1 ].centerX - v.dx1( c1 );
-            to.p1.y = c[ c1 ].centerY - v.dy1( c1 );
-            to.p2.x = c[ c1 ].centerX - v.dx2( c1 );
-            to.p2.y = c[ c1 ].centerY - v.dy2( c1 );
+            orientation = Qt::Vertical;
 
-            from.p1.x = c[ c2 ].centerX - v.dx1( c2 );
-            from.p1.y = c[ c2 ].centerY + v.dy1( c2 );
-            from.p2.x = c[ c2 ].centerX - v.dx2( c2 );
-            from.p2.y = c[ c2 ].centerY + v.dy2( c2 );
+            x1 = m_metrics.innerQuad.left;
+            x2 = m_metrics.outerQuad.left;
+            y1 = c1.isCropped ? c1.centerY + c1.radiusInnerY : c1.centerY;
+            y2 = c2.isCropped ? c2.centerY - c2.radiusInnerY : c2.centerY;
 
             break;
         }
-        case TopRight:
+        case Qt::TopEdge:
         {
-            const auto c2 = TopLeft;
+            const auto& c1 = m_metrics.corner[ TopLeft ];
+            const auto& c2 = m_metrics.corner[ TopRight ];
 
-            to.p1.x = c[ c1 ].centerX + v.dx1( c1 );
-            to.p1.y = c[ c1 ].centerY - v.dy1( c1 );
-            to.p2.x = c[ c1 ].centerX + v.dx2( c1 );
-            to.p2.y = c[ c1 ].centerY - v.dy2( c1 );
+            orientation = Qt::Horizontal;
 
-            from.p1.x = c[ c2 ].centerX - v.dx1( c2 );
-            from.p1.y = c[ c2 ].centerY - v.dy1( c2 );
-            from.p2.x = c[ c2 ].centerX - v.dx2( c2 );
-            from.p2.y = c[ c2 ].centerY - v.dy2( c2 );
+            x1 = c1.isCropped ? c1.centerX - c1.radiusInnerX : c1.centerX;
+            x2 = c2.isCropped ? c2.centerX + c2.radiusInnerX : c2.centerX;
+            y1 = m_metrics.innerQuad.top;
+            y2 = m_metrics.outerQuad.top;
 
             break;
         }
-        case BottomLeft:
+        case Qt::BottomEdge:
         {
-            const auto c2 = BottomRight;
+            const auto& c1 = m_metrics.corner[ BottomRight ];
+            const auto& c2 = m_metrics.corner[ BottomLeft ];
 
-            to.p1.x = c[ c1 ].centerX - v.dx1( c1 );
-            to.p1.y = c[ c1 ].centerY + v.dy1( c1 );
-            to.p2.x = c[ c1 ].centerX - v.dx2( c1 );
-            to.p2.y = c[ c1 ].centerY + v.dy2( c1 );
+            orientation = Qt::Horizontal;
 
-            from.p1.x = c[ c2 ].centerX + v.dx1( c2 );
-            from.p1.y = c[ c2 ].centerY + v.dy1( c2 );
-            from.p2.x = c[ c2 ].centerX + v.dx2( c2 );
-            from.p2.y = c[ c2 ].centerY + v.dy2( c2 );
+            x1 = c1.isCropped ? c1.centerX + c1.radiusInnerX : c1.centerX;
+            x2 = c2.isCropped ? c2.centerX - c2.radiusInnerX : c2.centerX;
+            y1 = m_metrics.innerQuad.bottom;
+            y2 = m_metrics.outerQuad.bottom;
 
             break;
         }
-        case BottomRight:
+        case Qt::RightEdge:
         {
-            const auto c2 = TopRight;
+            const auto& c1 = m_metrics.corner[ TopRight ];
+            const auto& c2 = m_metrics.corner[ BottomRight ];
 
-            to.p1.x = c[ c1 ].centerX + v.dx1( c1 );
-            to.p1.y = c[ c1 ].centerY + v.dy1( c1 );
-            to.p2.x = c[ c1 ].centerX + v.dx2( c1 );
-            to.p2.y = c[ c1 ].centerY + v.dy2( c1 );
+            orientation = Qt::Vertical;
 
-            from.p1.x = c[ c2 ].centerX + v.dx1( c2 );
-            from.p1.y = c[ c2 ].centerY - v.dy1( c2 );
-            from.p2.x = c[ c2 ].centerX + v.dx2( c2 );
-            from.p2.y = c[ c2 ].centerY - v.dy2( c2 );
+            x1 = m_metrics.innerQuad.right;
+            x2 = m_metrics.outerQuad.right;
+            y1 = c1.isCropped ? c1.centerY + c1.radiusInnerY : c1.centerY;
+            y2 = c2.isCropped ? c2.centerY - c2.radiusInnerY : c2.centerY;
 
             break;
         }
     }
-
-    const float dx1 = to.p1.x - from.p1.x;
-    const float dy1 = to.p1.y - from.p1.y;
-    const float dx2 = to.p2.x - from.p2.x;
-    const float dy2 = to.p2.y - from.p2.y;
-
-    const auto stops = gradient.stops();
 
     auto line = lines;
-    {
-        const auto& stop = stops.last();
+    const auto& stops = gradient.stops();
 
-        if ( stop.position() < 1.0 )
-            setBorderGradientLine( from, dx1, dy1, dx2, dy2, stop, line++ );
-    }
+    if ( stops.last().position() < 1.0 )
+        setGradientLineAt( orientation, x1, y1, x2, y2, stops.last(), line++ );
 
     for( int i = stops.count() - 2; i >= 1; i-- )
-        setBorderGradientLine( from, dx1, dy1, dx2, dy2, stops[i], line++ );
+        setGradientLineAt( orientation, x1, y1, x2, y2, stops[i], line++ );
 
-    {
-        const auto& stop = stops.first();
-
-        if ( stop.position() > 0.0 )
-            setBorderGradientLine( from, dx1, dy1, dx2, dy2, stop, line++ );
-    }
+    if ( stops.first().position() > 0.0 )
+        setGradientLineAt( orientation, x1, y1, x2, y2, stops.first(), line++ );
 }
 
 void QskRoundedRect::Stroker::createBorderLines( QskVertex::Line* lines ) const
@@ -684,21 +665,17 @@ void QskRoundedRect::Stroker::createUniformBox(
 
     if ( borderLines )
     {
-        v.setAngle( 0.0, 1.0 );
+        setBorderGradientLines( Qt::TopEdge,
+            borderColors, linesTR + numCornerLines );
 
-        setBorderGradientLines( v, TopRight,
-            borderColors.top(), linesTR + numCornerLines );
+        setBorderGradientLines( Qt::BottomEdge,
+            borderColors, linesBL + numCornerLines );
 
-        setBorderGradientLines( v, BottomLeft,
-            borderColors.bottom(), linesBL + numCornerLines );
+        setBorderGradientLines( Qt::LeftEdge,
+            borderColors, linesTL + numCornerLines );
 
-        v.setAngle( 1.0, 0.0 );
-
-        setBorderGradientLines( v, TopLeft,
-            borderColors.left(), linesTL + numCornerLines );
-
-        setBorderGradientLines( v, BottomRight,
-            borderColors.right(), linesBR + numCornerLines );
+        setBorderGradientLines( Qt::RightEdge,
+            borderColors, linesBR + numCornerLines );
 
         const int k = 4 * numCornerLines + extraBorderStops( borderColors );
 

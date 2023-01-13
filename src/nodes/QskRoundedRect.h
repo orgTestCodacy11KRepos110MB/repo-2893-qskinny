@@ -130,8 +130,8 @@ namespace QskRoundedRect
             QskVertex::ColoredLine*, const QskGradient& ) const;
 
       private:
-        void setBorderGradientLines( const BorderValues&,
-            int corner, const QskGradient&, QskVertex::ColoredLine* ) const;
+        void setBorderGradientLines( Qt::Edge,
+            const QskBoxBorderColors&, QskVertex::ColoredLine* ) const;
 
         const Metrics& m_metrics;
     };
