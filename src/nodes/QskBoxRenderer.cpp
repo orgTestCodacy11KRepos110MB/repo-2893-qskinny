@@ -16,7 +16,19 @@
 static inline QskGradient qskNormalizedGradient( const QskGradient gradient )
 {
     const auto dir = gradient.linearDirection();
-    if ( !dir.isTilted() )
+
+    if ( dir.isTilted() )
+    {
+        if ( gradient.isMonochrome() )
+        {
+            QskGradient g = gradient;
+            g.setLinearDirection( 0.0, 0.0, 0.0, 1.0 );
+            g.setSpreadMode( QskGradient::PadSpread );
+
+            return g;
+        }
+    }
+    else
     {
         /*
             Dealing with inverted gradient vectors makes the code even

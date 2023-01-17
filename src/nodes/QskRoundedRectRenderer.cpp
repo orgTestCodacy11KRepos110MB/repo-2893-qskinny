@@ -39,6 +39,7 @@ namespace
         qreal origin = 0.0;
         qreal length = 0.0;
     };
+
     /*
         A contour iterator for vertical and horizontal linear gradients.
         The radii in direction of the gradient need to match at the
@@ -63,8 +64,8 @@ namespace
                 m_pos0 = metrics.innerQuad.top;
                 m_size = metrics.innerQuad.height;
 
-                m_t = m_pos0 + vector.y1() * m_size;
-                m_dt = vector.dy() * m_size;
+                m_t = vector.y1();
+                m_dt = vector.dy();
             }
             else
             {
@@ -74,8 +75,8 @@ namespace
                 m_pos0 = metrics.innerQuad.left;
                 m_size = metrics.innerQuad.width;
 
-                m_t = m_pos0 + vector.x1() * m_size;
-                m_dt = vector.dx() * m_size;
+                m_t = vector.x1();
+                m_dt = vector.dx();
             }
 
             const auto& mc1 = metrics.corner[ c[0] ];
@@ -244,7 +245,7 @@ namespace
     };
 }
 
-static inline int qskFillLineCount(
+static inline int qskFillLineCount2(
     const QskRoundedRect::Metrics& metrics, const QskGradient& gradient )
 {
     using namespace QskRoundedRect;
@@ -252,41 +253,58 @@ static inline int qskFillLineCount(
     if ( !gradient.isVisible() )
         return 0;
 
-    int lineCount = 0;
-
     const auto dir = gradient.linearDirection();
 
+    if ( metrics.isTotallyCropped )
+    {
+        // degenerated to a rectangle
+
+        int n = gradient.stepCount() + 1;
+
+        if ( dir.isTilted() )
+        {
+            if ( metrics.centerQuad.width == metrics.centerQuad.height )
+            {
+                if ( !gradient.hasStopAt( 0.5 ) )
+                    n++;
+            }
+            else
+            {
+                // we might need extra lines for the corners
+                n += 2;
+            }
+        }
+
+        return n;
+    }
+
+    const auto c = metrics.corner;
+    int n = 0;
     if ( dir.isVertical() )
     {
-        lineCount += qMax( metrics.corner[ TopLeft ].stepCount,
-            metrics.corner[ TopRight ].stepCount ) + 1;
-
-        lineCount += qMax( metrics.corner[ BottomLeft ].stepCount,
-            metrics.corner[ BottomRight ].stepCount ) + 1;
+        n += qMax( c[ TopLeft ].stepCount, c[ TopRight ].stepCount ) + 1;
+        n += qMax( c[ BottomLeft ].stepCount, c[ BottomRight ].stepCount ) + 1;
 
         if ( metrics.centerQuad.top >= metrics.centerQuad.bottom )
-            lineCount--;
+            n--;
     }
     else if ( dir.isHorizontal() )
     {
-        lineCount += qMax( metrics.corner[ TopLeft ].stepCount,
-            metrics.corner[ BottomLeft ].stepCount ) + 1;
-
-        lineCount += qMax( metrics.corner[ TopRight ].stepCount,
-            metrics.corner[ BottomRight ].stepCount ) + 1;
+        n += qMax( c[ TopLeft ].stepCount, c[ BottomLeft ].stepCount ) + 1;
+        n += qMax( c[ TopRight ].stepCount, c[ BottomRight ].stepCount ) + 1;
 
         if ( metrics.centerQuad.left >= metrics.centerQuad.right )
-            lineCount--;
+            n--;
     }
     else
     {
-        lineCount += 2 * ( metrics.corner[ 0 ].stepCount + 1 );
+        n += 2 * ( c[ 0 ].stepCount + 1 );
 
         if ( metrics.centerQuad.left >= metrics.centerQuad.right )
-            lineCount--;
+            n--;
 
         if ( metrics.centerQuad.top >= metrics.centerQuad.bottom )
-            lineCount--;
+            n--;
 
         /*
             For diagonal lines the points at the opposite
@@ -294,7 +312,7 @@ static inline int qskFillLineCount(
             So we need to insert interpolating lines on both sides
          */
 
-        lineCount *= 2; // a real ellipse could be done with lineCount lines: TODO ...
+        n *= 2; // a real ellipse could be done with lineCount lines: TODO ...
 
 #if 1
         /*
@@ -304,57 +322,16 @@ static inline int qskFillLineCount(
             reserve memory for this to avoid crashes.
          */
 
-        lineCount++; // happens in a corner case - needs to be understood: TODO
+        n++; // happens in a corner case - needs to be understood: TODO
 #endif
     }
 
     // adding vertexes for the stops - beside the first/last
 
     if ( !gradient.isMonochrome() )
-        lineCount += gradient.stepCount() - 1;
+        n += gradient.stepCount() - 1;
 
-    return lineCount;
-}
-
-static inline void qskRenderBorder( const QskRoundedRect::Metrics& metrics,
-    const QskGradient& gradient, const QskBoxBorderColors& colors, ColoredLine* lines )
-{
-    // gradient is needed to know about the start/endpoint of the border lines
-
-    QskRoundedRect::Stroker stroker( metrics );
-    stroker.createUniformBox( lines, colors, nullptr, gradient );
-}
-
-static inline void qskRenderFilling( const QskRoundedRect::Metrics& metrics,
-    const QskGradient& gradient, ColoredLine* lines )
-{
-    static const QskBoxBorderColors noBorderColors;
-
-    QskRoundedRect::Stroker stroker( metrics );
-    stroker.createUniformBox( nullptr, noBorderColors, lines, gradient );
-}
-
-static inline void qskRenderUniformBox(
-    const QskRoundedRect::Metrics& metrics, const QskBoxBorderColors& borderColors,
-    const QskGradient& gradient, ColoredLine* fillLines, ColoredLine* borderLines )
-{
-    QskRoundedRect::Stroker stroker( metrics );
-    stroker.createUniformBox( borderLines, borderColors, fillLines, gradient );
-}
-
-static inline void qskRenderFillOrdered(
-    const QskRoundedRect::Metrics& metrics,
-    const QskGradient& gradient, int lineCount, ColoredLine* lines )
-{
-    /*
-        The algo for irregular radii at opposite corners is not yet
-        implemented TODO ...
-     */
-
-    const auto dir = gradient.linearDirection();
-
-    HVRectEllipseIterator it( metrics, dir.vector() );
-    QskVertex::fillOrdered( it, gradient, lineCount,lines );
+    return n;
 }
 
 void QskRoundedRectRenderer::renderBorderGeometry(
@@ -521,57 +498,50 @@ void QskRoundedRectRenderer::renderRect( const QRectF& rect,
     using namespace QskRoundedRect;
 
     const Metrics metrics( rect, shape, border );
+    const Stroker stroker( metrics ); 
 
-    const auto isTilted = gradient.linearDirection().isTilted();
-
-    int fillLineCount = 0;
-
-    if ( !metrics.innerQuad.isEmpty() && gradient.isVisible() )
+    auto effectiveGradient = gradient;
+    if ( !gradient.isMonochrome() )
     {
-        if ( metrics.isTotallyCropped )
-        {
-            // degenerated to a rectangle
-
-            fillLineCount = gradient.stepCount() + 1;
-
-#if 1
-            if ( isTilted )
-            {
-                if ( metrics.centerQuad.width == metrics.centerQuad.height )
-                {
-                    if ( !gradient.hasStopAt( 0.5 ) )
-                        fillLineCount++;
-                }
-                else
-                {
-                    // we might need extra lines for the corners
-                    fillLineCount += 2;
-                }
-            }
-#endif
-        }
-        else
-        {
-            fillLineCount = qskFillLineCount( metrics, gradient );
-        }
+        const auto& q = metrics.innerQuad;
+        effectiveGradient.stretchTo(
+            QRectF( q.left, q.top, q.width, q.height ) );
     }
 
-    const int stepCount = metrics.corner[ 0 ].stepCount;
-
-    int borderLineCount = 0;
-
-    if ( borderColors.isVisible() && metrics.innerQuad != metrics.outerQuad )
+    if ( gradient.isMonochrome() || ( gradient.stepCount() <= 1 )
+        || metrics.innerQuad.isEmpty() )
     {
-        borderLineCount = 4 * ( stepCount + 1 ) + 1;
-        borderLineCount += extraBorderStops( borderColors );
+        /*
+            We can do all colors with the vertexes of the contour lines
+            what allows using simpler and faster algos
+         */
+    
+        const int fillLineCount = stroker.fillLineCount( gradient );
+        const int borderLineCount = stroker.borderLineCount( borderColors );
+    
+        auto lines = allocateLines< ColoredLine >(
+            geometry, borderLineCount + fillLineCount );
+    
+        auto fillLines = fillLineCount ? lines : nullptr;
+        auto borderLines = borderLineCount ? lines + fillLineCount : nullptr;
+
+        stroker.createBox( borderLines, borderColors, fillLines, effectiveGradient );
+
+        return;
     }
+
+    const auto dir = gradient.linearDirection();
+    const auto isTilted = dir.isTilted();
+
+    const int fillLineCount = qskFillLineCount2( metrics, gradient );
+    const int borderLineCount = stroker.borderLineCount( borderColors );
 
     int lineCount = borderLineCount + fillLineCount;
 
     bool extraLine = false;
     if ( borderLineCount > 0 && fillLineCount > 0 )
     {
-        if ( !gradient.isMonochrome() && isTilted )
+        if ( isTilted )
         {
             /*
                 The filling ends at 45° and we have no implementation
@@ -585,94 +555,39 @@ void QskRoundedRectRenderer::renderRect( const QRectF& rect,
 
     auto lines = allocateLines< ColoredLine >( geometry, lineCount );
 
-    bool isUniform = true;
-    if ( fillLineCount > 0 )
+    auto fillLines = fillLineCount ? lines : nullptr;
+    auto borderLines = borderLineCount ? lines + fillLineCount : nullptr;
+
+    if ( fillLines )
     {
         if ( metrics.isTotallyCropped )
         {
-            isUniform = false;
+            QskRectRenderer::renderFill0( metrics.innerQuad,
+                gradient, fillLineCount, lines );
         }
-        else if ( !gradient.isMonochrome() )
+        else if ( isTilted )
         {
-            if ( gradient.stepCount() > 1 || isTilted )
-                isUniform = false;
-        }
-
-        if ( isUniform )
-        {
-            if ( !metrics.isRadiusRegular )
-            {
-                /*
-                    When we have a combination of corners with the same
-                    or no radius we could use the faster random algo: TODO ...
-                 */
-                isUniform = false;
-            }
-        }
-    }
-
-    if ( ( fillLineCount > 0 ) && ( borderLineCount > 0 ) )
-    {
-        if ( isUniform )
-        {
-            qskRenderUniformBox( metrics, borderColors,
-                gradient, lines, lines + fillLineCount );
+            renderDiagonalFill( metrics, gradient, fillLineCount, lines );
         }
         else
         {
-            if ( metrics.isTotallyCropped )
-            {
-                QskRectRenderer::renderFill0( metrics.innerQuad,
-                    gradient, fillLineCount, lines );
-            }
-            else if ( isTilted )
-            {
-                renderDiagonalFill( metrics, gradient, fillLineCount, lines );
-            }
-            else
-            {
-                qskRenderFillOrdered( metrics, gradient, fillLineCount, lines );
-            }
-
-            auto borderLines = lines + fillLineCount;
-            if ( extraLine )
-                borderLines++;
-
-            qskRenderBorder( metrics, gradient, borderColors, borderLines );
-
-            if ( extraLine )
-            {
-                const auto l = lines + fillLineCount;
-                l[ 0 ].p1 = l[ -1 ].p2;
-                l[ 0 ].p2 = l[ 1 ].p1;
-            }
+            HVRectEllipseIterator it( metrics, effectiveGradient.linearDirection().vector() );
+            QskVertex::fillBox( it, effectiveGradient, fillLineCount, fillLines );
         }
     }
-    else if ( fillLineCount > 0 )
+
+    if ( borderLines )
     {
-        if ( isUniform )
+        if ( extraLine )
+            borderLines++;
+
+        stroker.createBox( borderLines, borderColors, nullptr, gradient );
+
+        if ( extraLine )
         {
-            qskRenderFilling( metrics, gradient, lines );
+            const auto l = borderLines - 1;
+            l[ 0 ].p1 = l[ -1 ].p2;
+            l[ 0 ].p2 = l[ 1 ].p1;
         }
-        else
-        {
-            if ( metrics.isTotallyCropped )
-            {
-                QskRectRenderer::renderFill0( metrics.innerQuad,
-                    gradient, fillLineCount, lines );
-            }
-            else if ( isTilted )
-            {
-                renderDiagonalFill( metrics, gradient, fillLineCount, lines );
-            }
-            else
-            {
-                qskRenderFillOrdered( metrics, gradient, fillLineCount, lines );
-            }
-        }
-    }
-    else if ( borderLineCount > 0 )
-    {
-        qskRenderBorder( metrics, gradient, borderColors, lines );
     }
 }

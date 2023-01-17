@@ -48,6 +48,8 @@ namespace QskRoundedRect
         bool isBorderRegular;
         bool isRadiusRegular;
         bool isTotallyCropped;
+
+        Qt::Orientations stepSizeSymmetries;
     };
 
     class BorderValues
@@ -124,12 +126,30 @@ namespace QskRoundedRect
         {
         }
 
+        int fillLineCount( const QskGradient& ) const;
+        int borderLineCount( const QskBoxBorderColors& ) const;
+
         void createBorderLines( QskVertex::Line* ) const;
 
-        void createUniformBox( QskVertex::ColoredLine*, const QskBoxBorderColors&,
+        void createBox(
+            QskVertex::ColoredLine*, const QskBoxBorderColors&,
             QskVertex::ColoredLine*, const QskGradient& ) const;
 
       private:
+        void createRegularBox(
+            QskVertex::ColoredLine*, const QskBoxBorderColors&,
+            QskVertex::ColoredLine*, const QskGradient& ) const;
+
+        void createIrregularBox(
+            QskVertex::ColoredLine*, const QskBoxBorderColors&,
+            QskVertex::ColoredLine*, const QskGradient& ) const;
+
+        void createIrregularFill(
+            QskVertex::ColoredLine*, const QskGradient& ) const;
+
+        void createIrregularBorder(
+            QskVertex::ColoredLine*, const QskBoxBorderColors& ) const;
+
         void setBorderGradientLines( Qt::Edge,
             const QskBoxBorderColors&, QskVertex::ColoredLine* ) const;
 
