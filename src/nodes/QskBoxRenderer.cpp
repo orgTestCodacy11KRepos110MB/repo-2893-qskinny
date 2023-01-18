@@ -12,20 +12,25 @@
 
 #include "QskGradient.h"
 #include "QskGradientDirection.h"
+#include "QskFunctions.h"
 
-static inline QskGradient qskNormalizedGradient( const QskGradient gradient )
+static inline QskGradient qskEffectiveGradient(
+    const QRectF& rect, const QskGradient gradient )
 {
+    if ( rect.isEmpty() )
+        return QskGradient();
+
     const auto dir = gradient.linearDirection();
+
+    auto g = gradient;
 
     if ( dir.isTilted() )
     {
-        if ( gradient.isMonochrome() )
+        if ( g.isMonochrome() )
         {
-            QskGradient g = gradient;
+            g.setStretchMode( QskGradient::StretchToSize );
             g.setLinearDirection( 0.0, 0.0, 0.0, 1.0 );
             g.setSpreadMode( QskGradient::PadSpread );
-
-            return g;
         }
     }
     else
@@ -36,17 +41,25 @@ static inline QskGradient qskNormalizedGradient( const QskGradient gradient )
          */
         if ( ( dir.x1() > dir.x2() ) || ( dir.y1() > dir.y2() ) )
         {
-            QskGradient g = gradient;
             g.setLinearDirection( dir.x2(), dir.y2(), dir.x1(), dir.y1() );
 
             if ( !g.isMonochrome() )
                 g.setStops( qskRevertedGradientStops( gradient.stops() ) );
-
-            return g;
         }
     }
 
-    return gradient;
+    if ( g.stretchMode() == QskGradient::StretchToSize )
+        g.stretchTo( rect );
+
+    return g;
+}
+
+static inline bool qskMaybeSpreading( const QskGradient& gradient )
+{
+    if ( gradient.stretchMode() == QskGradient::StretchToSize )
+        return !gradient.linearDirection().contains( QRectF( 0, 0, 1, 1 ) );
+
+    return true;
 }
 
 void QskBoxRenderer::renderBorderGeometry(
@@ -94,17 +107,18 @@ void QskBoxRenderer::renderBox( const QRectF& rect,
 {
     geometry.setDrawingMode( QSGGeometry::DrawTriangleStrip );
 
-    const auto gradientN = qskNormalizedGradient( gradient );
+    const auto innerRect = qskValidOrEmptyInnerRect( rect, border.widths() );
+    const auto effectiveGradient = qskEffectiveGradient( innerRect,  gradient );
 
     if ( shape.isRectangle() )
     {
         QskRectRenderer::renderRect(
-            rect, border, borderColors, gradientN, geometry );
+            rect, border, borderColors, effectiveGradient, geometry );
     }
     else
     {
         QskRoundedRectRenderer::renderRect(
-            rect, shape, border, borderColors, gradientN, geometry );
+            rect, shape, border, borderColors, effectiveGradient, geometry );
     }
 }
 
@@ -113,12 +127,6 @@ bool QskBoxRenderer::isGradientSupported(
 {
     if ( !gradient.isVisible() || gradient.isMonochrome() )
         return true;
-
-    if ( gradient.spreadMode() != QskGradient::PadSpread )
-    {
-        // Only true if the situation requires spreading TODO ...
-        return false;
-    }
 
     switch( gradient.type() )
     {
@@ -129,16 +137,24 @@ bool QskBoxRenderer::isGradientSupported(
         }
         case QskGradient::Linear:
         {
-            const auto dir = gradient.linearDirection();
+            if ( ( gradient.spreadMode() != QskGradient::PadSpread )
+                && qskMaybeSpreading( gradient ) )
+            {
+                return false;
+            }
 
             if ( shape.isRectangle() )
             {
-                // rectangles are fully supported
                 return true;
             }
 
+            const auto dir = gradient.linearDirection();
+
             if ( dir.isTilted() )
             {
+                if ( gradient.stepCount() <= 1 )
+                    return dir.contains( QRectF( 0.0, 0.0, 1.0, 1.0 ) );
+                    
                 return ( dir.x1() == 0.0 ) && ( dir.x2() == 1.0 )
                     && ( dir.y1() == 0.0 ) && ( dir.y2() == 1.0 );
             }

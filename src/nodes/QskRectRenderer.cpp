@@ -16,6 +16,174 @@ using namespace QskVertex;
 
 namespace
 {
+    class BorderStroker
+    {
+      public:
+        BorderStroker( const Quad& in, const Quad& out, const QskBoxBorderColors& colors )
+            : m_in( in )
+            , m_out( out )
+            , m_colors( colors )
+            , m_isVisible( ( in != out ) && colors.isVisible() )
+            , m_isMonochrome( !m_isVisible || colors.isMonochrome() )
+        {
+        }
+
+        int lineCount() const
+        {
+            if ( !m_isVisible )
+                return 0;
+
+            // We can build a rectangular border from the 4 diagonal
+            // lines at the corners, but need an additional line
+            // for closing the border.
+
+            int n = 4 + 1;
+
+            if ( !m_isMonochrome )
+            {
+                const int gradientLines = -1
+                    + m_colors.left().stepCount()
+                    + m_colors.top().stepCount()
+                    + m_colors.right().stepCount()
+                    + m_colors.bottom().stepCount();
+
+                n += qMax( gradientLines, 0 );
+            }
+
+            return n;
+        }
+
+        ColoredLine* addLines( ColoredLine* lines ) const
+        {
+            if ( !m_isVisible )
+                return lines;
+
+            if ( m_isMonochrome )
+            {
+                const Color c = m_colors.left().rgbStart();
+
+                lines[0].setLine( m_in.right, m_in.bottom, m_out.right, m_out.bottom, c );
+                lines[1].setLine( m_in.left, m_in.bottom, m_out.left, m_out.bottom, c );
+                lines[2].setLine( m_in.left, m_in.top, m_out.left, m_out.top, c );
+                lines[3].setLine( m_in.right, m_in.top, m_out.right, m_out.top, c );
+                lines[4] = lines[ 0 ];
+
+                return lines + 5;
+            }
+
+            auto line = lines;
+
+            const qreal dx1 = m_in.right - m_in.left;
+            const qreal dx2 = m_out.right - m_out.left;
+            const qreal dy1 = m_in.top - m_in.bottom;
+            const qreal dy2 = m_out.top - m_out.bottom;
+
+            {
+                const auto stops = m_colors.bottom().stops();
+
+                if ( stops.first().position() > 0.0 )
+                {
+                    ( line++ )->setLine( m_in.right, m_in.bottom,
+                        m_out.right, m_out.bottom, stops.first().rgb() );
+                }
+
+                for( const auto& stop : stops )
+                {
+                    const qreal x1 = m_in.right - stop.position() * dx1;
+                    const qreal x2 = m_out.right - stop.position() * dx2;
+
+                    ( line++ )->setLine( x1, m_in.bottom, x2, m_out.bottom, stop.rgb() );
+                }
+
+                if ( stops.last().position() < 1.0 )
+                {
+                    ( line++ )->setLine( m_in.left, m_in.bottom,
+                        m_out.left, m_out.bottom, stops.last().rgb() );
+                }
+            }
+
+            {
+                const auto stops = m_colors.left().stops();
+
+                if ( stops.first().position() > 0.0 )
+                {
+                    ( line++ )->setLine( m_in.left, m_in.bottom,
+                        m_out.left, m_out.bottom, stops.first().rgb() );
+                }
+
+                for( const auto& stop : stops )
+                {
+                    const qreal y1 = m_in.bottom + stop.position() * dy1;
+                    const qreal y2 = m_out.bottom + stop.position() * dy2;
+
+                    ( line++ )->setLine( m_in.left, y1, m_out.left, y2, stop.rgb() );
+                }
+
+                if ( stops.last().position() < 1.0 )
+                {
+                    ( line++ )->setLine( m_in.left, m_in.top,
+                        m_out.left, m_out.top, stops.last().rgb() );
+                }
+            }
+
+            {
+                const auto stops = m_colors.top().stops();
+
+                if ( stops.first().position() > 0.0 )
+                {
+                    ( line++ )->setLine( m_in.left, m_in.top,
+                        m_out.left, m_out.top, stops.first().rgb() );
+                }
+
+                for( const auto& stop : stops )
+                {
+                    const qreal x1 = m_in.left + stop.position() * dx1;
+                    const qreal x2 = m_out.left + stop.position() * dx2;
+
+                    ( line++ )->setLine( x1, m_in.top, x2, m_out.top, stop.rgb() );
+                }
+
+                if ( stops.last().position() < 1.0 )
+                {
+                    ( line++ )->setLine( m_in.right, m_in.top,
+                        m_out.right, m_out.top, stops.last().rgb() );
+                }
+            }
+
+            {
+                const auto stops = m_colors.right().stops();
+
+                if ( stops.first().position() > 0.0 )
+                {
+                    ( line++ )->setLine( m_in.right, m_in.top,
+                        m_out.right, m_out.top, stops.first().rgb() );
+                }
+
+                for( const auto& stop : stops )
+                {
+                    const qreal y1 = m_in.bottom + ( 1 - stop.position() ) * dy1;
+                    const qreal y2 = m_out.bottom + ( 1 - stop.position() ) * dy2;
+
+                    ( line++ )->setLine( m_in.right, y1, m_out.right, y2, stop.rgb() );
+                }
+
+                if ( stops.last().position() < 1.0 )
+                {
+                    ( line++ )->setLine( m_in.right, m_in.bottom,
+                        m_out.right, m_out.bottom, stops.last().rgb() );
+                }
+            }
+
+            return line;
+        }
+
+      private:
+        const Quad m_in, m_out;
+        const QskBoxBorderColors& m_colors;
+        const bool m_isVisible;
+        const bool m_isMonochrome;
+    };
+
     class HVRectIterator
     {
       public:
@@ -25,16 +193,16 @@ namespace
         {
             if ( m_vertical )
             {
-                m_t = rect.top + vector.y1() * rect.height;
-                m_dt = vector.dy() * rect.height;
+                m_t = vector.y1();
+                m_dt = vector.dy();
 
                 m_values[0] = ( rect.top - m_t ) / m_dt;
                 m_values[1] = ( rect.bottom - m_t ) / m_dt;
             }
             else
             {
-                m_t = rect.left + vector.x1() * rect.width;
-                m_dt = vector.dx() * rect.width;
+                m_t = vector.x1();
+                m_dt = vector.dx();
 
                 m_values[0] = ( rect.left - m_t ) / m_dt;
                 m_values[1] = ( rect.right - m_t ) / m_dt;
@@ -65,7 +233,10 @@ namespace
             }
         }
 
+        inline qreal valueBegin() const { return m_values[ 0 ]; }
+        inline qreal valueEnd() const { return m_values[ 1 ]; }
         inline qreal value() const { return m_values[ m_step ? 1 : 0 ]; }
+
         inline bool advance() { return m_step++ == 0; }
 
       private:
@@ -81,10 +252,10 @@ namespace
       public:
         inline DRectIterator( const Quad& quad, const QLineF& vector )
         {
-            m_v.x = quad.left + vector.x1() * quad.width;
-            m_v.y = quad.top + vector.y1() * quad.height;
-            m_v.dx = vector.dx() * quad.width;
-            m_v.dy = vector.dy() * quad.height;
+            m_v.x = vector.x1();
+            m_v.y = vector.y1();
+            m_v.dx = vector.dx();
+            m_v.dy = vector.dy();
 
             /*
                 We calculate the values at the corners and order them
@@ -224,15 +395,11 @@ namespace
             }
         }
 
-        inline qreal value() const
-        {
-            return m_corners[ m_step ].value;
-        }
+        inline qreal valueBegin() const { return m_corners[ 0 ].value; }
+        inline qreal valueEnd() const { return m_corners[ 3 ].value; }
+        inline qreal value() const { return m_corners[ m_step ].value; }
 
-        inline bool advance()
-        {
-            return ++m_step <= 3;
-        }
+        inline bool advance() { return ++m_step <= 3; }
 
       private:
         struct { qreal x, y, dx, dy; } m_v;
@@ -272,115 +439,6 @@ static inline Line* qskAddBorderLines(
     line[4] = line[ 0 ];
 
     return line + 5;
-}
-
-template< class Line >
-static inline Line* qskAddBorderLines(
-    const Quad& out, const Quad& in,
-    const QskBoxBorderColors& colors, Line* line )
-{
-    const qreal dx1 = in.right - in.left;
-    const qreal dx2 = out.right - out.left;
-    const qreal dy1 = in.top - in.bottom;
-    const qreal dy2 = out.top - out.bottom;
-
-    {
-        const auto stops = colors.bottom().stops();
-
-        if ( stops.first().position() > 0.0 )
-        {
-            ( line++ )->setLine( in.right, in.bottom,
-                out.right, out.bottom, stops.first().rgb() );
-        }
-
-        for( const auto& stop : stops )
-        {
-            const qreal x1 = in.right - stop.position() * dx1;
-            const qreal x2 = out.right - stop.position() * dx2;
-
-            ( line++ )->setLine( x1, in.bottom, x2, out.bottom, stop.rgb() );
-        }
-
-        if ( stops.last().position() < 1.0 )
-        {
-            ( line++ )->setLine( in.left, in.bottom,
-                out.left, out.bottom, stops.last().rgb() );
-        }
-    }
-
-    {
-        const auto stops = colors.left().stops();
-
-        if ( stops.first().position() > 0.0 )
-        {
-            ( line++ )->setLine( in.left, in.bottom,
-                out.left, out.bottom, stops.first().rgb() );
-        }
-
-        for( const auto& stop : stops )
-        {
-            const qreal y1 = in.bottom + stop.position() * dy1;
-            const qreal y2 = out.bottom + stop.position() * dy2;
-
-            ( line++ )->setLine( in.left, y1, out.left, y2, stop.rgb() );
-        }
-
-        if ( stops.last().position() < 1.0 )
-        {
-            ( line++ )->setLine( in.left, in.top,
-                out.left, out.top, stops.last().rgb() );
-        }
-    }
-
-    {
-        const auto stops = colors.top().stops();
-
-        if ( stops.first().position() > 0.0 )
-        {
-            ( line++ )->setLine( in.left, in.top,
-                out.left, out.top, stops.first().rgb() );
-        }
-
-        for( const auto& stop : stops )
-        {
-            const qreal x1 = in.left + stop.position() * dx1;
-            const qreal x2 = out.left + stop.position() * dx2;
-
-            ( line++ )->setLine( x1, in.top, x2, out.top, stop.rgb() );
-        }
-
-        if ( stops.last().position() < 1.0 )
-        {
-            ( line++ )->setLine( in.right, in.top,
-                out.right, out.top, stops.last().rgb() );
-        }
-    }
-
-    {
-        const auto stops = colors.right().stops();
-
-        if ( stops.first().position() > 0.0 )
-        {
-            ( line++ )->setLine( in.right, in.top,
-                out.right, out.top, stops.first().rgb() );
-        }
-
-        for( const auto& stop : stops )
-        {
-            const qreal y1 = in.bottom + ( 1 - stop.position() ) * dy1;
-            const qreal y2 = out.bottom + ( 1 - stop.position() ) * dy2;
-
-            ( line++ )->setLine( in.right, y1, out.right, y2, stop.rgb() );
-        }
-
-        if ( stops.last().position() < 1.0 )
-        {
-            ( line++ )->setLine( in.right, in.bottom,
-                out.right, out.bottom, stops.last().rgb() );
-        }
-    }
-
-    return line;
 }
 
 void QskRectRenderer::renderBorderGeometry( const QRectF& rect,
@@ -429,99 +487,59 @@ void QskRectRenderer::renderRect( const QRectF& rect,
     const QskBoxBorderMetrics& border, const QskBoxBorderColors& borderColors,
     const QskGradient& gradient, QSGGeometry& geometry )
 {
-    const Quad out = rect;
     const Quad in = qskValidOrEmptyInnerRect( rect, border.widths() );
+    const Quad out = rect;
 
     int fillLineCount = 0;
-    if ( gradient.isVisible() && !in.isEmpty() )
+
+    if ( !in.isEmpty() && gradient.isVisible() )
     {
-        fillLineCount = gradient.stepCount() + 1;
+        const auto dir = gradient.linearDirection();
 
-        if ( !gradient.isMonochrome() && gradient.linearDirection().isTilted() )
-            fillLineCount += 2; // contour lines for the corners
-    }
+        fillLineCount = 2; // contour lines
 
-    int borderLineCount = 0;
-    if ( in != out && borderColors.isVisible() )
-    {
-        // We can build a rectangular border from the 4 diagonal
-        // lines at the corners, but need an additional line
-        // for closing the border.
-
-        borderLineCount = 4 + 1;
-
-        if ( !borderColors.isMonochrome() )
+        if ( !gradient.isMonochrome() )
         {
-            // we might need extra lines to separate colors
-            // at the non closing corners
+            if ( dir.isTilted() )
+                fillLineCount += 2; // contour lines for the opposite corners
 
-            // ### As an optimization we could check orientation and colors
-            // to test whether colors are the same
-            const int additionalLines = -1
-                + borderColors.left().stepCount()
-                + borderColors.top().stepCount()
-                + borderColors.right().stepCount()
-                + borderColors.bottom().stepCount();
+            fillLineCount += gradient.stepCount() - 1;
 
-            borderLineCount += qMax( additionalLines, 0 );
+            if ( !gradient.linearDirection().contains( in ) )
+            {
+                /*
+                    The gradient starts and/or ends inside of the rectangle
+                    and we have to add extra gradient lines. As this is a
+                    corner case we always allocate memory for both to avoid
+                    making this calculation even more confusing.
+                 */
+
+                fillLineCount += 2;
+            }
         }
     }
+
+    const BorderStroker stroker( in, out, borderColors );
+    const int borderLineCount = stroker.lineCount();
 
     const auto lines = allocateLines< ColoredLine >(
         geometry, borderLineCount + fillLineCount );
 
-    auto l = lines;
-
     if ( fillLineCount > 0 )
     {
-        if ( gradient.isMonochrome() )
+        if ( fillLineCount == 2 )
         {
-            const auto c = gradient.rgbStart();
+            const QskVertex::ColorMap fillMap( gradient );
 
-            ( l++ )->setHLine( rect.left(), rect.right(), rect.top(), c );
-            ( l++ )->setHLine( rect.left(), rect.right(), rect.bottom(), c );
+            fillMap.setLine( in.left, in.top, in.right, in.top, lines + 0 );
+            fillMap.setLine( in.left, in.bottom, in.right, in.bottom, lines + 1 );
         }
         else
         {
-            const auto dir = gradient.linearDirection();
-
-            if ( gradient.stepCount() <= 1 && !dir.isTilted() )
-            {
-                const auto c1 = gradient.rgbStart();
-                const auto c2 = gradient.rgbEnd();
-
-                if ( dir.isVertical() )
-                {
-                    ( l++ )->setHLine( rect.left(), rect.right(), rect.top(), c1 );
-                    ( l++ )->setHLine( rect.left(), rect.right(), rect.bottom(), c2 );
-                }
-                else
-                {
-                    ( l++ )->setVLine( rect.left(), rect.top(), rect.bottom(), c1 );
-                    ( l++ )->setVLine( rect.right(), rect.top(), rect.bottom(), c2 );
-                }
-            }
-            else
-            {
-                l = qskAddFillLines( in, gradient, fillLineCount, l );
-            }
+            qskAddFillLines( in, gradient, fillLineCount, lines );
         }
-
-        Q_ASSERT( l - lines == fillLineCount );
     }
 
     if ( borderLineCount > 0 )
-    {
-        if ( borderColors.isMonochrome() )
-        {
-            const auto rgb = borderColors.left().rgbStart();
-            l = qskAddBorderLines( rect, in, Color( rgb ), l );
-        }
-        else
-        {
-            l = qskAddBorderLines( rect, in, borderColors, l );
-        }
-
-        Q_ASSERT( l - lines == borderLineCount + fillLineCount );
-    }
+        stroker.addLines( lines + fillLineCount );
 }

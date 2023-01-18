@@ -168,11 +168,9 @@ namespace
             setLine( m_v2.from, m_v2.to, m_v2.pos, color, line );
         }
 
-        inline qreal value() const
-        {
-            // coordinate translated into the gradient vector
-            return ( m_v2.pos - m_t ) / m_dt;
-        }
+        inline qreal valueBegin() const { return ( m_pos0 - m_t ) / m_dt; }
+        inline qreal valueEnd() const { return ( ( m_pos0 + m_size ) - m_t ) / m_dt; }
+        inline qreal value() const { return ( m_v2.pos - m_t ) / m_dt; }
 
       private:
 
@@ -259,21 +257,17 @@ static inline int qskFillLineCount2(
     {
         // degenerated to a rectangle
 
-        int n = gradient.stepCount() + 1;
+#if 1
+        // code copied from QskRectRenderer.cpp TODO ...
+        int n = 2; 
 
         if ( dir.isTilted() )
-        {
-            if ( metrics.centerQuad.width == metrics.centerQuad.height )
-            {
-                if ( !gradient.hasStopAt( 0.5 ) )
-                    n++;
-            }
-            else
-            {
-                // we might need extra lines for the corners
-                n += 2;
-            }
-        }
+            n += 2; 
+
+        n += gradient.stepCount() - 1;
+        if ( !dir.contains( metrics.innerQuad ) )
+            n += 2;
+#endif
 
         return n;
     }
@@ -500,16 +494,8 @@ void QskRoundedRectRenderer::renderRect( const QRectF& rect,
     const Metrics metrics( rect, shape, border );
     const Stroker stroker( metrics ); 
 
-    auto effectiveGradient = gradient;
-    if ( !gradient.isMonochrome() )
-    {
-        const auto& q = metrics.innerQuad;
-        effectiveGradient.stretchTo(
-            QRectF( q.left, q.top, q.width, q.height ) );
-    }
-
-    if ( gradient.isMonochrome() || ( gradient.stepCount() <= 1 )
-        || metrics.innerQuad.isEmpty() )
+    if ( metrics.innerQuad.isEmpty() ||
+        !QskVertex::gradientLinesNeeded( metrics.innerQuad, gradient ) )
     {
         /*
             We can do all colors with the vertexes of the contour lines
@@ -525,7 +511,7 @@ void QskRoundedRectRenderer::renderRect( const QRectF& rect,
         auto fillLines = fillLineCount ? lines : nullptr;
         auto borderLines = borderLineCount ? lines + fillLineCount : nullptr;
 
-        stroker.createBox( borderLines, borderColors, fillLines, effectiveGradient );
+        stroker.createBox( borderLines, borderColors, fillLines, gradient );
 
         return;
     }
@@ -571,8 +557,8 @@ void QskRoundedRectRenderer::renderRect( const QRectF& rect,
         }
         else
         {
-            HVRectEllipseIterator it( metrics, effectiveGradient.linearDirection().vector() );
-            QskVertex::fillBox( it, effectiveGradient, fillLineCount, fillLines );
+            HVRectEllipseIterator it( metrics, gradient.linearDirection().vector() );
+            QskVertex::fillBox( it, gradient, fillLineCount, fillLines );
         }
     }
 

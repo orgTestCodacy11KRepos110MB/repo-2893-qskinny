@@ -9,6 +9,7 @@
 #include "QskBoxShapeMetrics.h"
 #include "QskBoxBorderColors.h"
 #include "QskBoxBorderMetrics.h"
+#include "QskBoxRendererColorMap.h"
 
 #include <qmath.h>
 
@@ -96,67 +97,6 @@ namespace
 
         Values m_inner;
         Values m_outer;
-    };
-
-    class ColorMap
-    {
-      public:
-        inline ColorMap( const QskGradient& gradient )
-            : m_isMonochrome( gradient.isMonochrome() )
-            , m_color1( gradient.rgbStart() )
-            , m_color2( gradient.rgbEnd() )
-        {
-            if ( !m_isMonochrome )
-            {
-                const auto dir = gradient.linearDirection();
-
-                m_x = dir.x1();
-                m_y = dir.y1();
-                m_dx = dir.x2() - dir.x1();
-                m_dy = dir.y2() - dir.y1();
-                m_dot = m_dx * m_dx + m_dy * m_dy;
-            }
-        }
-
-        void setLine( qreal x1, qreal y1, qreal x2, qreal y2,
-            QskVertex::ColoredLine* line ) const
-        {
-            if ( m_isMonochrome )
-            {
-                line->setLine( x1, y1, x2, y2, m_color1 );
-            }
-            else
-            {
-                const auto c1 = colorAt( x1, y1 );
-                const auto c2 = colorAt( x2, y2 );
-
-                line->setLine( x1, y1, c1, x2, y2, c2 );
-            }
-        }
-
-      private:
-        QskVertex::Color colorAt( qreal x, qreal y ) const
-        {
-            if ( m_isMonochrome )
-                return m_color1;
-
-            return m_color1.interpolatedTo( m_color2, valueAt( x, y ) );
-        }
-
-        inline qreal valueAt( qreal x, qreal y ) const
-        {
-            const qreal dx = x - m_x;
-            const qreal dy = y - m_y;
-
-            return ( dx * m_dx + dy * m_dy ) / m_dot;
-        }
-
-        const bool m_isMonochrome;
-
-        qreal m_x, m_y, m_dx, m_dy, m_dot;
-
-        const QskVertex::Color m_color1;
-        const QskVertex::Color m_color2;
     };
 
     class BorderMap
@@ -635,7 +575,7 @@ void QskRoundedRect::Stroker::createRegularBox(
 {
     Q_ASSERT( fillLines == nullptr || ( gradient.isValid() && gradient.stepCount() <= 1 ) );
 
-    const ColorMap fillMap( gradient );
+    const QskVertex::ColorMap fillMap( gradient );
 
     const auto& c = m_metrics.corner;
     const int stepCount = c[ 0 ].stepCount;
@@ -908,7 +848,7 @@ void QskRoundedRect::Stroker::createIrregularFill(
 
     BorderValues v( m_metrics );
 
-    const ColorMap fillMap( gradient );
+    const QskVertex::ColorMap fillMap( gradient );
 
     auto line = lines;
 

@@ -164,6 +164,7 @@ namespace
 
         inline bool isClockwise() const { return m_clockwise; }
         inline bool isDone() const { return m_isDone; }
+
         inline qreal value() const { return m_contourLine.p2.v; }
 
         inline const ContourLine& contourLine() const { return m_contourLine; }
@@ -584,10 +585,11 @@ namespace
             m_next->setLine( color, line );
         }
 
-        inline qreal value() const
-        {
-            return m_next->value();
-        }
+#if 1
+        inline qreal valueBegin() const { return 0.0; }
+        inline qreal valueEnd() const { return 1.0; }
+#endif
+        inline qreal value() const { return m_next->value(); }
 
         inline bool advance()
         {
