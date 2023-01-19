@@ -15,9 +15,9 @@
 
 namespace
 {
-    inline int extraStops( const QskGradient& gradient )
+    inline int gradientLineCount( const QskGradient& borderGradient )
     {
-        return qMax( 0, gradient.stepCount() - 1 );
+        return qMax( 0, borderGradient.stepCount() - 1 );
     }
 
     static inline void setGradientLineAt(
@@ -138,10 +138,10 @@ namespace
     };
 }
 
-int QskRoundedRect::extraBorderStops( const QskBoxBorderColors& bc )
+int QskRoundedRect::borderGradientLineCount( const QskBoxBorderColors& bc )
 {
-    return extraStops( bc.left() ) + extraStops( bc.top() )
-        + extraStops( bc.right() ) + extraStops( bc.bottom() );
+    return gradientLineCount( bc.left() ) + gradientLineCount( bc.top() )
+        + gradientLineCount( bc.right() ) + gradientLineCount( bc.bottom() );
 }
 
 
@@ -593,9 +593,9 @@ void QskRoundedRect::Stroker::createRegularBox(
         if ( borderLines )
         {
             linesTR = borderLines + 1;
-            linesTL = linesTR + numCornerLines + extraStops( borderColors.top() );
-            linesBL = linesTL + numCornerLines + extraStops( borderColors.left() );
-            linesBR = linesBL + numCornerLines + extraStops( borderColors.bottom() );
+            linesTL = linesTR + numCornerLines + gradientLineCount( borderColors.top() );
+            linesBL = linesTL + numCornerLines + gradientLineCount( borderColors.left() );
+            linesBR = linesBL + numCornerLines + gradientLineCount( borderColors.bottom() );
         }
     }
     else
@@ -603,9 +603,9 @@ void QskRoundedRect::Stroker::createRegularBox(
         if ( borderLines )
         {
             linesBR = borderLines;
-            linesTR = linesBR + numCornerLines + extraStops( borderColors.right() );
-            linesTL = linesTR + numCornerLines + extraStops( borderColors.top() );
-            linesBL = linesTL + numCornerLines + extraStops( borderColors.left() );
+            linesTR = linesBR + numCornerLines + gradientLineCount( borderColors.right() );
+            linesTL = linesTR + numCornerLines + gradientLineCount( borderColors.top() );
+            linesBL = linesTL + numCornerLines + gradientLineCount( borderColors.left() );
         }
     }
 
@@ -713,7 +713,7 @@ void QskRoundedRect::Stroker::createRegularBox(
         setBorderGradientLines( Qt::LeftEdge, borderColors, linesTL + numCornerLines );
         setBorderGradientLines( Qt::RightEdge, borderColors, linesBR + numCornerLines );
 
-        const int k = 4 * numCornerLines + extraBorderStops( borderColors );
+        const int k = 4 * numCornerLines + borderGradientLineCount( borderColors );
 
         if ( m_metrics.stepSizeSymmetries == Qt::Horizontal )
             borderLines[ 0 ] = borderLines[ k ];
@@ -723,7 +723,7 @@ void QskRoundedRect::Stroker::createRegularBox(
 }
 
 void QskRoundedRect::Stroker::createIrregularBorder(
-    QskVertex::ColoredLine* borderLines, const QskBoxBorderColors& borderColors ) const
+    QskVertex::ColoredLine* lines, const QskBoxBorderColors& colors ) const
 {
     const auto& c = m_metrics.corner;
 
@@ -732,37 +732,37 @@ void QskRoundedRect::Stroker::createIrregularBorder(
 
     if ( m_metrics.stepSizeSymmetries == Qt::Horizontal )
     {
-        linesTR = borderLines + 1;
+        linesTR = lines + 1;
         linesTop = linesTR + c[ TopRight ].stepCount + 1;
 
-        linesTL = linesTop + extraStops( borderColors.top() );
+        linesTL = linesTop + gradientLineCount( colors.top() );
         linesLeft = linesTL + c[ TopLeft ].stepCount + 1;
 
-        linesBL = linesLeft + extraStops( borderColors.left() );
+        linesBL = linesLeft + gradientLineCount( colors.left() );
         linesBottom = linesBL + c[ BottomLeft ].stepCount + 1;
 
-        linesBR = linesBottom + extraStops( borderColors.bottom() );
+        linesBR = linesBottom + gradientLineCount( colors.bottom() );
         linesRight = linesBR + c[ BottomRight ].stepCount + 1;
     }
     else
     {
-        linesBR = borderLines;
+        linesBR = lines;
         linesRight = linesBR + c[ BottomRight ].stepCount + 1;
 
-        linesTR = linesRight + extraStops( borderColors.right() );
+        linesTR = linesRight + gradientLineCount( colors.right() );
         linesTop = linesTR + c[ TopRight ].stepCount + 1;
 
-        linesTL = linesTop + extraStops( borderColors.top() );
+        linesTL = linesTop + gradientLineCount( colors.top() );
         linesLeft = linesTL + c[ TopLeft ].stepCount + 1;
 
-        linesBL = linesLeft + extraStops( borderColors.left() );
+        linesBL = linesLeft + gradientLineCount( colors.left() );
         linesBottom = linesBL + c[ BottomLeft ].stepCount + 1;
     }
 
     {
         const auto& c = m_metrics.corner[ TopLeft ];
 
-        const BorderMap map( c.stepCount, borderColors.top(), borderColors.left() );
+        const BorderMap map( c.stepCount, colors.top(), colors.left() );
         BorderValue v( c );
 
         for ( ArcIterator it( c.stepCount, false ); !it.isDone(); ++it )
@@ -779,7 +779,7 @@ void QskRoundedRect::Stroker::createIrregularBorder(
     {
         const auto& c = m_metrics.corner[ BottomLeft ];
 
-        const BorderMap map( c.stepCount, borderColors.bottom(), borderColors.left() );
+        const BorderMap map( c.stepCount, colors.bottom(), colors.left() );
         BorderValue v( c );
 
         for ( ArcIterator it( c.stepCount, true ); !it.isDone(); ++it )
@@ -796,7 +796,7 @@ void QskRoundedRect::Stroker::createIrregularBorder(
     {
         const auto& c = m_metrics.corner[ BottomRight ];
 
-        const BorderMap map( c.stepCount, borderColors.bottom(), borderColors.right() );
+        const BorderMap map( c.stepCount, colors.bottom(), colors.right() );
         BorderValue v( c );
 
         for ( ArcIterator it( c.stepCount, false ); !it.isDone(); ++it )
@@ -813,7 +813,7 @@ void QskRoundedRect::Stroker::createIrregularBorder(
     {
         const auto& c = m_metrics.corner[ TopRight ];
 
-        const BorderMap map( c.stepCount, borderColors.top(), borderColors.right() );
+        const BorderMap map( c.stepCount, colors.top(), colors.right() );
         BorderValue v( c );
 
         for ( ArcIterator it( c.stepCount, true ); !it.isDone(); ++it )
@@ -827,21 +827,20 @@ void QskRoundedRect::Stroker::createIrregularBorder(
         }
     }
 
-    setBorderGradientLines( Qt::TopEdge, borderColors, linesTop );
-    setBorderGradientLines( Qt::BottomEdge, borderColors, linesBottom );
-    setBorderGradientLines( Qt::LeftEdge, borderColors, linesLeft );
-    setBorderGradientLines( Qt::RightEdge, borderColors, linesRight );
+    setBorderGradientLines( Qt::TopEdge, colors, linesTop );
+    setBorderGradientLines( Qt::BottomEdge, colors, linesBottom );
+    setBorderGradientLines( Qt::LeftEdge, colors, linesLeft );
+    setBorderGradientLines( Qt::RightEdge, colors, linesRight );
 
     const int k = c[0].stepCount + c[1].stepCount
-        + c[2].stepCount + c[3].stepCount + 4 + extraBorderStops( borderColors );
+        + c[2].stepCount + c[3].stepCount + 4 + borderGradientLineCount( colors );
 
     if ( m_metrics.stepSizeSymmetries == Qt::Horizontal )
-        borderLines[ 0 ] = borderLines[ k ];
+        lines[ 0 ] = lines[ k ];
     else
-        borderLines[ k ] = borderLines[ 0 ];
+        lines[ k ] = lines[ 0 ];
 
-    Q_ASSERT( k == borderLineCount( borderColors ) - 1 );
-
+    Q_ASSERT( k == borderLineCount( colors ) - 1 );
 }
 
 void QskRoundedRect::Stroker::createIrregularFill(
@@ -952,7 +951,7 @@ int QskRoundedRect::Stroker::borderLineCount( const QskBoxBorderColors& colors )
     int n = 4;
 
     n += c[0].stepCount + c[1].stepCount + c[2].stepCount + c[3].stepCount;
-    n += extraBorderStops( colors );
+    n += borderGradientLineCount( colors );
 
     n++; // duplicating the first line at the end to close the border path
 

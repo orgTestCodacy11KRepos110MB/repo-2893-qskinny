@@ -23,7 +23,7 @@ namespace QskRoundedRect
         BottomRight = Qt::BottomRightCorner
     };
 
-    int extraBorderStops( const QskBoxBorderColors& );
+    int borderGradientLineCount( const QskBoxBorderColors& );
 
     class Metrics
     {
