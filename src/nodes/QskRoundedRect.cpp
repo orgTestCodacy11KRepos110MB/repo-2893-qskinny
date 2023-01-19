@@ -622,7 +622,7 @@ void QskRoundedRect::Stroker::createRegularBox(
         if ( borderLines )
         {
             const int j = it.step();
-            const int k = numCornerLines - it.step() - 1;
+            const int k = stepCount - it.step();
 
             {
                 constexpr auto corner = TopLeft;
@@ -789,7 +789,7 @@ void QskRoundedRect::Stroker::createIrregularBorder(
             linesBL[ it.step() ].setLine(
                 c.centerX - v.dx1(), c.centerY + v.dy1(),
                 c.centerX - v.dx2(), c.centerY + v.dy2(),
-                map.colorAt( it.step() ) );
+                map.colorAt( c.stepCount - it.step() ) );
         }
     }
 
@@ -823,7 +823,7 @@ void QskRoundedRect::Stroker::createIrregularBorder(
             linesTR[ it.step() ].setLine(
                 c.centerX + v.dx1(), c.centerY - v.dy1(),
                 c.centerX + v.dx2(), c.centerY - v.dy2(),
-                map.colorAt( it.step() ) );
+                map.colorAt( c.stepCount - it.step() ) );
         }
     }
 
