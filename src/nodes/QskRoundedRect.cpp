@@ -563,7 +563,7 @@ void QskRoundedRect::Stroker::createBox(
     QskVertex::ColoredLine* borderLines, const QskBoxBorderColors& borderColors,
     QskVertex::ColoredLine* fillLines, const QskGradient& gradient ) const
 {
-    if ( m_metrics.isRadiusRegular )
+    if ( m_metrics.isRadiusRegular && !m_metrics.isTotallyCropped )
         createRegularBox( borderLines, borderColors, fillLines, gradient );
     else
         createIrregularBox( borderLines, borderColors, fillLines, gradient );
@@ -839,16 +839,29 @@ void QskRoundedRect::Stroker::createIrregularBorder(
         borderLines[ 0 ] = borderLines[ k ];
     else
         borderLines[ k ] = borderLines[ 0 ];
+
+    Q_ASSERT( k == borderLineCount( borderColors ) - 1 );
+
 }
 
 void QskRoundedRect::Stroker::createIrregularFill(
     QskVertex::ColoredLine* lines, const QskGradient& gradient ) const
 {
+    const QskVertex::ColorMap fillMap( gradient );
+
+    if ( m_metrics.isTotallyCropped )
+    {
+        const auto& q = m_metrics.innerQuad;
+
+        fillMap.setLine( q.left, q.top, q.right, q.top, lines );
+        fillMap.setLine( q.left, q.bottom, q.right, q.bottom, lines + 1 );
+
+        return;
+    }
+
     const auto& c = m_metrics.corner;
 
     BorderValues v( m_metrics );
-
-    const QskVertex::ColorMap fillMap( gradient );
 
     auto line = lines;
 

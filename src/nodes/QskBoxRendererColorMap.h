@@ -16,27 +16,6 @@ class QskBoxShapeMetrics;
 
 namespace QskVertex
 {
-    inline bool gradientLinesNeeded( const QRectF& rect, const QskGradient& gradient )
-    {
-        if ( gradient.isMonochrome() )
-            return false;
-
-        switch( gradient.stepCount() )
-        {
-            case 0:
-                return false;
-
-            case 1:
-            {
-                Q_ASSERT( gradient.stretchMode() != QskGradient::StretchToSize );
-                return !gradient.linearDirection().contains( rect );
-            }
-
-            default:
-                return true;
-        }
-    }
-
     class ColorMap
     {
       public:
@@ -256,6 +235,9 @@ namespace QskVertex
 
         if ( lineCount >= 0 )
         {
+            const auto count = lineCount - ( l - lines );
+            Q_ASSERT( count >= 0 );
+
             /*
                 Precalculating all situations where gradient and contour lines
                 are matching and doing an precise allocation makes the code
@@ -263,7 +245,7 @@ namespace QskVertex
                 strategy and simply fill up the memory with duplicates of the
                 final lines.
              */
-            if ( const auto count = lineCount - ( l - lines ) )
+            if ( count > 0 )
                 l = QskVertex::fillUp( l, *( l - 1 ), count );
         }
 

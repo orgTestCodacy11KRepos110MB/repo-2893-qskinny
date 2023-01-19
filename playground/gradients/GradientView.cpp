@@ -165,15 +165,19 @@ QSGNode* GradientView::updatePaintNode(
         }
         case BoxRectangle:
         {
-            if ( !QskBoxRenderer::isGradientSupported(
-                QskBoxShapeMetrics(), m_gradient ) )
+            QskBoxShapeMetrics metrics;
+#if 0
+            metrics.setRadius( 50 );
+#endif
+
+            if ( !QskBoxRenderer::isGradientSupported( metrics, m_gradient ) )
             {
                 delete oldNode;
                 return nullptr;
             }
 
             auto node = gradientNode< QskBoxRectangleNode >( oldNode );
-            node->updateNode( rect, m_gradient );
+            node->updateNode( rect, metrics, m_gradient );
 
             return node;
         }

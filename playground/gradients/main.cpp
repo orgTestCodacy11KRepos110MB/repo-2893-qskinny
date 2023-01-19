@@ -73,8 +73,8 @@ namespace
 
             m_inputs[0] = new NumberInput( "X1", 0, this );
             m_inputs[1] = new NumberInput( "Y1", 0, this );
-            m_inputs[2] = new NumberInput( "X2", 0, this );
-            m_inputs[3] = new NumberInput( "Y2", 1, this );
+            m_inputs[2] = new NumberInput( "X2", 1, this );
+            m_inputs[3] = new NumberInput( "Y2", 0, this );
 
             for ( auto input : m_inputs )
             {
@@ -117,8 +117,13 @@ namespace
                 m_views[i] = new GradientView( nodeType, this );
             }
 
-            setVector( QLineF( 0.0, 0.0, 0.0, 1.0 ) );
+            setVector( QLineF( 0, 0, 1, 0 ) );
+#if 1
             setColors( { Qt::green, Qt::red, Qt::yellow, Qt::cyan, Qt::darkCyan } );
+#else
+
+            setStops( { { 0.0, Qt::red }, { 1.0, Qt::blue } } );
+#endif
         }
 
       public Q_SLOTS:
@@ -158,9 +163,6 @@ namespace
                     view->setGradient( m_gradient );
             }
         }
-
-        QLineF m_vector = { 0.0, 0.0, 0.0, 1.0 };
-        QskGradientStops m_stops = { { 0.0, Qt::red }, { 1.0, Qt::blue } };
 
         QskGradient m_gradient;
         GradientView* m_views[ GradientView::NumNodeTypes ];

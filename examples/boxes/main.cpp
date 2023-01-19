@@ -20,6 +20,8 @@
 
 #include <QGuiApplication>
 
+#define TONAL_GRADIENTS 1
+
 namespace
 {
     // Some leftover definitions from M(aterial)2. TODO ...
@@ -83,7 +85,11 @@ static void addRectangles1( QskLinearBox* parent )
                         Box::Horizontal, Box::Vertical, Box::Diagonal } )
     {
         auto* rectangle = new MyRectangle( parent );
+#if TONAL_GRADIENTS
         rectangle->setTonalGradient( type, QskRgb::Teal );
+#else
+        rectangle->setGradient( type, Qt::red, Qt::blue );
+#endif
     }
 }
 
@@ -94,7 +100,11 @@ static void addRectangles2( QskLinearBox* parent )
     {
         auto* rectangle = new MyRectangle( parent );
         rectangle->setBorder( Box::Flat, QskRgb::SaddleBrown );
+#if TONAL_GRADIENTS
         rectangle->setWebGradient( type, QGradient::SunnyMorning );
+#else
+        rectangle->setGradient( type, Qt::red, Qt::blue );
+#endif
     }
 }
 
@@ -133,7 +143,11 @@ static void addRectangles4( QskLinearBox* parent )
         Box::Horizontal, Box::Vertical, Box::Diagonal } )
     {
         auto* box = new MyRoundedRectangle( parent );
+#if TONAL_GRADIENTS
         box->setTonalGradient( type, QskRgb::OrangeRed );
+#else
+        box->setGradient( type, Qt::red, Qt::blue );
+#endif
     }
 }
 
@@ -144,7 +158,11 @@ static void addRectangles5( QskLinearBox* parent )
     {
         auto* box = new MyRoundedRectangle( parent );
         box->setBorder( Box::Flat, QskRgb::RoyalBlue );
+#if TONAL_GRADIENTS
         box->setTonalGradient( type, QskRgb::DeepPink );
+#else
+        box->setGradient( type, Qt::red, Qt::blue );
+#endif
     }
 }
 

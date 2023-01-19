@@ -243,6 +243,28 @@ namespace
     };
 }
 
+static inline bool qskGradientLinesNeeded(
+    const QRectF& rect, const QskGradient& gradient )
+{
+    if ( gradient.isMonochrome() )
+        return false;
+
+    switch( gradient.stepCount() )
+    {
+        case 0:
+            return false;
+
+        case 1:
+        {
+            Q_ASSERT( gradient.stretchMode() != QskGradient::StretchToSize );
+            return !gradient.linearDirection().contains( rect );
+        }
+
+        default:
+            return true;
+    }
+}
+
 static inline int qskFillLineCount2(
     const QskRoundedRect::Metrics& metrics, const QskGradient& gradient )
 {
@@ -495,7 +517,7 @@ void QskRoundedRectRenderer::renderRect( const QRectF& rect,
     const Stroker stroker( metrics ); 
 
     if ( metrics.innerQuad.isEmpty() ||
-        !QskVertex::gradientLinesNeeded( metrics.innerQuad, gradient ) )
+        !qskGradientLinesNeeded( metrics.innerQuad, gradient ) )
     {
         /*
             We can do all colors with the vertexes of the contour lines
