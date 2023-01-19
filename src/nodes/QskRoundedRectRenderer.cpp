@@ -275,46 +275,49 @@ static inline int qskFillLineCount2(
 
     const auto dir = gradient.linearDirection();
 
-    if ( metrics.isTotallyCropped )
+    int n = 0;
+
+    if ( !gradient.isMonochrome() )
     {
-        // degenerated to a rectangle
-
-#if 1
-        // code copied from QskRectRenderer.cpp TODO ...
-        int n = 2; 
-
-        if ( dir.isTilted() )
-            n += 2; 
+        // adding vertexes for the stops - beside the first/last
 
         n += gradient.stepCount() - 1;
         if ( !dir.contains( metrics.innerQuad ) )
             n += 2;
-#endif
+    }
+
+    if ( metrics.isTotallyCropped )
+    {
+        n += 2; 
+        if ( dir.isTilted() )
+            n += 2; // extra contour lies for the corners
 
         return n;
     }
 
     const auto c = metrics.corner;
-    int n = 0;
+
+    n += 2; // final lines at the opening/closing sides
+
     if ( dir.isVertical() )
     {
-        n += qMax( c[ TopLeft ].stepCount, c[ TopRight ].stepCount ) + 1;
-        n += qMax( c[ BottomLeft ].stepCount, c[ BottomRight ].stepCount ) + 1;
+        n += qMax( c[ TopLeft ].stepCount, c[ TopRight ].stepCount );
+        n += qMax( c[ BottomLeft ].stepCount, c[ BottomRight ].stepCount );
 
         if ( metrics.centerQuad.top >= metrics.centerQuad.bottom )
-            n--;
+            n--; // opening/closing at the same position
     }
     else if ( dir.isHorizontal() )
     {
-        n += qMax( c[ TopLeft ].stepCount, c[ BottomLeft ].stepCount ) + 1;
-        n += qMax( c[ TopRight ].stepCount, c[ BottomRight ].stepCount ) + 1;
+        n += qMax( c[ TopLeft ].stepCount, c[ BottomLeft ].stepCount );
+        n += qMax( c[ TopRight ].stepCount, c[ BottomRight ].stepCount );
 
         if ( metrics.centerQuad.left >= metrics.centerQuad.right )
-            n--;
+            n--; // opening/closing at the same position
     }
     else
     {
-        n += 2 * ( c[ 0 ].stepCount + 1 );
+        n += 2 * c[ 0 ].stepCount;
 
         if ( metrics.centerQuad.left >= metrics.centerQuad.right )
             n--;
@@ -328,7 +331,7 @@ static inline int qskFillLineCount2(
             So we need to insert interpolating lines on both sides
          */
 
-        n *= 2; // a real ellipse could be done with lineCount lines: TODO ...
+        n *= 2; // a real ellipse could be done with n lines: TODO ...
 
 #if 1
         /*
@@ -341,11 +344,6 @@ static inline int qskFillLineCount2(
         n++; // happens in a corner case - needs to be understood: TODO
 #endif
     }
-
-    // adding vertexes for the stops - beside the first/last
-
-    if ( !gradient.isMonochrome() )
-        n += gradient.stepCount() - 1;
 
     return n;
 }
@@ -513,7 +511,7 @@ void QskRoundedRectRenderer::renderRect( const QRectF& rect,
 {
     using namespace QskRoundedRect;
 
-    const Metrics metrics( rect, shape, border );
+    Metrics metrics( rect, shape, border );
     const Stroker stroker( metrics ); 
 
     if ( metrics.innerQuad.isEmpty() ||
@@ -579,8 +577,12 @@ void QskRoundedRectRenderer::renderRect( const QRectF& rect,
         }
         else
         {
-            HVRectEllipseIterator it( metrics, gradient.linearDirection().vector() );
+            HVRectEllipseIterator it( metrics, dir.vector() );
             QskVertex::fillBox( it, gradient, fillLineCount, fillLines );
+
+            // prevent the border from starting at the wrong position
+            metrics.preferredOrientation = dir.isVertical() ? Qt::Vertical : Qt::Horizontal;
+            Q_ASSERT( metrics.preferredOrientation & metrics.stepSizeSymmetries );
         }
     }
 

@@ -171,6 +171,9 @@ QskRoundedRect::Metrics::Metrics( const QRectF& rect,
             if ( tr.isEmpty() || br.isEmpty() || ( tr.width() == br.width() ) )
                 stepSizeSymmetries |= Qt::Horizontal;
         }
+
+        preferredOrientation = ( stepSizeSymmetries == Qt::Horizontal )
+                ? Qt::Horizontal : Qt::Vertical;
     }
 
     for ( int i = 0; i < 4; i++ )
@@ -588,7 +591,7 @@ void QskRoundedRect::Stroker::createRegularBox(
     const int numCornerLines = stepCount + 1;
     const int numFillLines = fillLines ? 2 * numCornerLines : 0;
 
-    if ( m_metrics.stepSizeSymmetries == Qt::Horizontal )
+    if ( m_metrics.preferredOrientation == Qt::Horizontal )
     {
         if ( borderLines )
         {
@@ -671,7 +674,7 @@ void QskRoundedRect::Stroker::createRegularBox(
 
         if ( fillLines )
         {
-            if ( m_metrics.stepSizeSymmetries == Qt::Horizontal )
+            if ( m_metrics.preferredOrientation == Qt::Horizontal )
             {
                 const int j = stepCount - it.step();
                 const int k = numFillLines - 1 - stepCount + it.step();
@@ -715,7 +718,7 @@ void QskRoundedRect::Stroker::createRegularBox(
 
         const int k = 4 * numCornerLines + borderGradientLineCount( borderColors );
 
-        if ( m_metrics.stepSizeSymmetries == Qt::Horizontal )
+        if ( m_metrics.preferredOrientation == Qt::Horizontal )
             borderLines[ 0 ] = borderLines[ k ];
         else
             borderLines[ k ] = borderLines[ 0 ];
@@ -730,7 +733,7 @@ void QskRoundedRect::Stroker::createIrregularBorder(
     QskVertex::ColoredLine* linesBR, * linesTR, * linesTL, * linesBL;
     QskVertex::ColoredLine* linesRight, * linesTop, * linesLeft, * linesBottom;
 
-    if ( m_metrics.stepSizeSymmetries == Qt::Horizontal )
+    if ( m_metrics.preferredOrientation == Qt::Horizontal )
     {
         linesTR = lines + 1;
         linesTop = linesTR + c[ TopRight ].stepCount + 1;
@@ -835,7 +838,7 @@ void QskRoundedRect::Stroker::createIrregularBorder(
     const int k = c[0].stepCount + c[1].stepCount
         + c[2].stepCount + c[3].stepCount + 4 + borderGradientLineCount( colors );
 
-    if ( m_metrics.stepSizeSymmetries == Qt::Horizontal )
+    if ( m_metrics.preferredOrientation == Qt::Horizontal )
         lines[ 0 ] = lines[ k ];
     else
         lines[ k ] = lines[ 0 ];
@@ -866,7 +869,7 @@ void QskRoundedRect::Stroker::createIrregularFill(
 
     int stepCount;
 
-    if ( m_metrics.stepSizeSymmetries == Qt::Horizontal )
+    if ( m_metrics.preferredOrientation == Qt::Horizontal )
     {
         stepCount = qMax( c[TopLeft].stepCount, c[BottomLeft].stepCount );
 
@@ -975,7 +978,7 @@ int QskRoundedRect::Stroker::fillLineCount( const QskGradient& gradient ) const
      */
     int n = 2;
 
-    if ( m_metrics.stepSizeSymmetries == Qt::Horizontal )
+    if ( m_metrics.preferredOrientation == Qt::Horizontal )
     {
         n += qMax( c[ TopLeft ].stepCount, c[ BottomLeft ].stepCount );
         n += qMax( c[ TopRight ].stepCount, c[ BottomRight ].stepCount );

@@ -50,6 +50,7 @@ namespace QskRoundedRect
         bool isTotallyCropped;
 
         Qt::Orientations stepSizeSymmetries;
+        Qt::Orientation preferredOrientation;
     };
 
     class BorderValues
