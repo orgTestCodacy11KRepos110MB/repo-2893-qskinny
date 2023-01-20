@@ -41,6 +41,8 @@ namespace QskRoundedRect
             qreal radiusX, radiusY;
             qreal radiusInnerX, radiusInnerY;
 
+            qreal sx, sy;
+
             int stepCount;
 
         } corner[ 4 ];
@@ -51,6 +53,18 @@ namespace QskRoundedRect
 
         Qt::Orientations stepSizeSymmetries;
         Qt::Orientation preferredOrientation;
+    };
+
+    class BorderGeometryLayout
+    {
+      public:
+        BorderGeometryLayout( const Metrics&, const QskBoxBorderColors& );
+
+        int cornerOffsets[ 4 ];
+        int edgeOffsets[ 4 ];
+
+        int closingOffsets[2];
+        int lineCount;
     };
 
     class BorderValues

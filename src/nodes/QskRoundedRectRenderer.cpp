@@ -401,19 +401,9 @@ void QskRoundedRectRenderer::renderFillGeometry(
     }
 
 #if 0
-    if (  metrics.isRadiusRegular )
+    if (  metrics.stepSizeSymmetries )
     {
-        int lineCount += metrics.corner[ TopLeft ].stepCount +
-            metrics.corner[ BottomLeft ].stepCount;
-
-        if ( metrics.centerQuad.top >= metrics.centerQuad.bottom )
-            lineCount--;
-
-        geometry.allocate( 2 * lineCount );
-
-        Stroker< Line > stroker( metrics );
-        ...
-
+        // using the Stroker to build the geometry with vertical/horizontal lines
         return;
     }
 #endif
@@ -438,70 +428,38 @@ void QskRoundedRectRenderer::renderFillGeometry(
 
     Q_ASSERT( geometry.sizeOfIndex() == 2 );
 
-    auto p = geometry.vertexDataAsPoint2D();
-    auto idx = geometry.indexDataAsUShort();
+    auto points = geometry.vertexDataAsPoint2D();
+    auto indexes = geometry.indexDataAsUShort();
 
     int i = 0;
 
-    p[i++].set( rect.x() + 0.5 * rect.width(), rect.y() + 0.5 * rect.height() );
+    points[i++].set( rect.x() + 0.5 * rect.width(),
+        rect.y() + 0.5 * rect.height() );
 
     BorderValues v( metrics );
 
+    bool inverted = false;
+
+    for ( const auto id : { TopLeft, BottomLeft, BottomRight, TopRight } )
     {
-        constexpr auto id = TopLeft;
         const auto& c = metrics.corner[ id ];
 
-        for ( ArcIterator it( c.stepCount, false ); !it.isDone(); ++it )
+        for ( ArcIterator it( c.stepCount, inverted ); !it.isDone(); ++it )
         {
-            *idx++ = 0;
-            *idx++ = i;
+            *indexes++ = 0;
+            *indexes++ = i;
 
             v.setAngle( it.cos(), it.sin() );
-            p[i++].set( c.centerX - v.dx1( id ), c.centerY - v.dy1( id ) );
+
+            points[i++].set( c.centerX + c.sx * v.dx1( id ),
+                c.centerY + c.sy * v.dy1( id ) );
         }
-    }
-    {
-        constexpr auto id = BottomLeft;
-        const auto& c = metrics.corner[ id ];
 
-        for ( ArcIterator it( c.stepCount, true ); !it.isDone(); ++it )
-        {
-            *idx++ = 0;
-            *idx++ = i;
-
-            v.setAngle( it.cos(), it.sin() );
-            p[i++].set( c.centerX - v.dx1( id ), c.centerY + v.dy1( id ) );
-        }
-    }
-    {
-        constexpr auto id = BottomRight;
-        const auto& c = metrics.corner[ id ];
-
-        for ( ArcIterator it( c.stepCount, false ); !it.isDone(); ++it )
-        {
-            *idx++ = 0;
-            *idx++ = i;
-
-            v.setAngle( it.cos(), it.sin() );
-            p[i++].set( c.centerX + v.dx1( id ), c.centerY + v.dy1( id ) );
-        }
-    }
-    {
-        constexpr auto id = TopRight;
-        const auto& c = metrics.corner[ id ];
-
-        for ( ArcIterator it( c.stepCount, true ); !it.isDone(); ++it )
-        {
-            *idx++ = 0;
-            *idx++ = i;
-
-            v.setAngle( it.cos(), it.sin() );
-            p[i++].set( c.centerX + v.dx1( id ), c.centerY - v.dy1( id ) );
-        }
+        inverted = !inverted;
     }
 
-    *idx++ = 0;
-    *idx++ = 1;
+    *indexes++ = 0;
+    *indexes++ = 1;
 }
 
 void QskRoundedRectRenderer::renderRect( const QRectF& rect,
