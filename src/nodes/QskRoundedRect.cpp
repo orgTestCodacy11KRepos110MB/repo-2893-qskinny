@@ -149,13 +149,8 @@ QskRoundedRect::Metrics::Metrics( const QRectF& rect,
                 stepSizeSymmetries |= Qt::Horizontal;
         }
 
-#if 1
         preferredOrientation = ( stepSizeSymmetries == Qt::Horizontal )
                 ? Qt::Horizontal : Qt::Vertical;
-#else
-        preferredOrientation = ( stepSizeSymmetries == Qt::Vertical )
-                ? Qt::Vertical : Qt::Horizontal;
-#endif
     }
 
     for ( int i = 0; i < 4; i++ )
