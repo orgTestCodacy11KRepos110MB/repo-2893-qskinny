@@ -288,7 +288,7 @@ static inline int qskFillLineCount2(
 
     if ( metrics.isTotallyCropped )
     {
-        n += 2; 
+        n += 2;
         if ( dir.isTilted() )
             n += 2; // extra contour lies for the corners
 
@@ -436,23 +436,18 @@ void QskRoundedRectRenderer::renderFillGeometry(
     points[i++].set( rect.x() + 0.5 * rect.width(),
         rect.y() + 0.5 * rect.height() );
 
-    BorderValues v( metrics );
-
     bool inverted = false;
 
-    for ( const auto id : { TopLeft, BottomLeft, BottomRight, TopRight } )
+    for ( const auto corner : { TopLeft, BottomLeft, BottomRight, TopRight } )
     {
-        const auto& c = metrics.corner[ id ];
+        const auto& c = metrics.corner[ corner ];
 
         for ( ArcIterator it( c.stepCount, inverted ); !it.isDone(); ++it )
         {
             *indexes++ = 0;
             *indexes++ = i;
 
-            v.setAngle( it.cos(), it.sin() );
-
-            points[i++].set( c.centerX + c.sx * v.dx1( id ),
-                c.centerY + c.sy * v.dy1( id ) );
+            points[i++].set( c.xInner( it.cos() ), c.yInner( it.sin() ) );
         }
 
         inverted = !inverted;
@@ -470,7 +465,7 @@ void QskRoundedRectRenderer::renderRect( const QRectF& rect,
     using namespace QskRoundedRect;
 
     Metrics metrics( rect, shape, border );
-    const Stroker stroker( metrics ); 
+    const Stroker stroker( metrics );
 
     if ( metrics.innerQuad.isEmpty() ||
         !qskGradientLinesNeeded( metrics.innerQuad, gradient ) )
@@ -479,13 +474,13 @@ void QskRoundedRectRenderer::renderRect( const QRectF& rect,
             We can do all colors with the vertexes of the contour lines
             what allows using simpler and faster algos
          */
-    
+
         const int fillLineCount = stroker.fillLineCount( gradient );
         const int borderLineCount = stroker.borderLineCount( borderColors );
-    
+
         auto lines = allocateLines< ColoredLine >(
             geometry, borderLineCount + fillLineCount );
-    
+
         auto fillLines = fillLineCount ? lines : nullptr;
         auto borderLines = borderLineCount ? lines + fillLineCount : nullptr;
 

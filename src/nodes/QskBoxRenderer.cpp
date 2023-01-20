@@ -154,9 +154,9 @@ bool QskBoxRenderer::isGradientSupported(
             {
                 if ( gradient.stepCount() <= 1 )
                     return dir.contains( QRectF( 0.0, 0.0, 1.0, 1.0 ) );
-                    
+
                 return ( dir.x1() == 0.0 ) && ( dir.x2() == 1.0 )
-                    && ( dir.y1() == 0.0 ) && ( dir.y2() == 1.0 );
+                       && ( dir.y1() == 0.0 ) && ( dir.y2() == 1.0 );
             }
             else
             {

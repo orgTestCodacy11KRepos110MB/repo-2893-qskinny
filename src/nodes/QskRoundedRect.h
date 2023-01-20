@@ -36,10 +36,47 @@ namespace QskRoundedRect
 
         struct Corner
         {
+            inline qreal xInner( qreal cos ) const
+            {
+                return centerX + sx * ( x0 + cos * rx );
+            }
+
+            inline qreal yInner( qreal sin ) const
+            {
+                return centerY + sy * ( y0 + sin * ry );
+            }
+
+            inline qreal xOuter( qreal cos ) const
+            {
+                return centerX + sx * ( cos * radiusX );
+            }
+
+            inline qreal yOuter( qreal sin ) const
+            {
+                return centerY + sy * ( sin * radiusY );
+            }
+
+            inline void setBorderLine( qreal cos, qreal sin,
+                QskVertex::Color color, QskVertex::ColoredLine& line ) const
+            {
+                line.setLine( xInner( cos ), yInner( sin ),
+                    xOuter( cos ), yOuter( sin ), color );
+            }
+
+            inline void setBorderLine( qreal cos, qreal sin, QskVertex::Line& line ) const
+            {
+                line.setLine( xInner( cos ), yInner( sin ),
+                    xOuter( cos ), yOuter( sin ) );
+            }
+
             bool isCropped;
+
             qreal centerX, centerY;
             qreal radiusX, radiusY;
             qreal radiusInnerX, radiusInnerY;
+
+            qreal x0, rx;
+            qreal y0, ry;
 
             qreal sx, sy;
 
@@ -65,72 +102,6 @@ namespace QskRoundedRect
 
         int closingOffsets[2];
         int lineCount;
-    };
-
-    class BorderValues
-    {
-      public:
-        BorderValues( const Metrics& );
-        void setAngle( qreal cos, qreal sin );
-
-        inline qreal dx1( int pos ) const
-        {
-            return m_isUniform ? m_uniform.dx1 : m_multi.inner[ pos].dx;
-        }
-
-        inline qreal dy1( int pos ) const
-        {
-            return m_isUniform ? m_uniform.dy1 : m_multi.inner[ pos ].dy;
-        }
-
-        inline qreal dx2( int pos ) const
-        {
-            if ( m_isUniform )
-                return m_uniform.dx2;
-
-            const auto outer = m_multi.outer;
-            return m_metrics.isRadiusRegular ? outer[ 0 ].dx : outer[ pos ].dx;
-        }
-
-        inline qreal dy2( int pos ) const
-        {
-            if ( m_isUniform )
-                return m_uniform.dy2;
-
-            const auto outer = m_multi.outer;
-            return m_metrics.isRadiusRegular ? outer[ 0 ].dy : outer[ pos ].dy;
-        }
-
-      private:
-        const Metrics& m_metrics;
-        const bool m_isUniform;
-
-        class Values
-        {
-          public:
-            inline void setAngle( qreal cos, qreal sin )
-            {
-                dx = x0 + cos * rx;
-                dy = y0 + sin * ry;
-            }
-
-            qreal dx, dy;
-            qreal x0, y0, rx, ry;
-        };
-
-        union
-        {
-            struct
-            {
-                Values inner[ 4 ];
-                Values outer[ 4 ];
-            } m_multi;
-
-            struct
-            {
-                qreal dx1, dy1, dx2, dy2;
-            } m_uniform;
-        };
     };
 
     class Stroker
