@@ -377,84 +377,20 @@ void QskRoundedRectRenderer::renderFillGeometry(
 
     const Metrics metrics( rect, shape, border );
 
-    if ( ( metrics.innerQuad.width <= 0 ) || ( metrics.innerQuad.height <= 0 ) )
+    Stroker stroker( metrics );
+
+    if ( metrics.stepSizeSymmetries )
     {
-        geometry.allocate( 0 );
-        return;
-    }
+        const int fillLineCount = stroker.fillLineCount();
 
-    if ( metrics.isTotallyCropped )
+        auto lines = allocateLines< Line >( geometry, fillLineCount );
+        if ( fillLineCount )
+            stroker.createFillLines( lines );
+    }
+    else
     {
-        // degenerated to a rectangle
-
-        geometry.allocate( 4 );
-
-        const auto& quad = metrics.innerQuad;
-
-        auto p = geometry.vertexDataAsPoint2D();
-        p[0].set( quad.left, quad.top );
-        p[1].set( quad.right, quad.top );
-        p[2].set( quad.left, quad.bottom );
-        p[3].set( quad.right, quad.bottom );
-
-        return;
+        stroker.createFillFanLines( geometry );
     }
-
-#if 0
-    if (  metrics.stepSizeSymmetries )
-    {
-        // using the Stroker to build the geometry with vertical/horizontal lines
-        return;
-    }
-#endif
-
-    /*
-        Unfortunately QSGGeometry::DrawTriangleFan is no longer supported with
-        Qt6 and we have to go with DrawTriangleStrip, duplicating the center with
-        each vertex.
-     */
-
-    const auto numPoints =
-        metrics.corner[0].stepCount + metrics.corner[1].stepCount
-        + metrics.corner[2].stepCount + metrics.corner[3].stepCount + 4;
-
-    /*
-        points: center point + interpolated corner points
-        indexes: lines between the center and each point, where
-                 the first line needs to be appended to close the filling
-     */
-
-    geometry.allocate( 1 + numPoints, 2 * ( numPoints + 1 ) );
-
-    Q_ASSERT( geometry.sizeOfIndex() == 2 );
-
-    auto points = geometry.vertexDataAsPoint2D();
-    auto indexes = geometry.indexDataAsUShort();
-
-    int i = 0;
-
-    points[i++].set( rect.x() + 0.5 * rect.width(),
-        rect.y() + 0.5 * rect.height() );
-
-    bool inverted = false;
-
-    for ( const auto corner : { TopLeft, BottomLeft, BottomRight, TopRight } )
-    {
-        const auto& c = metrics.corner[ corner ];
-
-        for ( ArcIterator it( c.stepCount, inverted ); !it.isDone(); ++it )
-        {
-            *indexes++ = 0;
-            *indexes++ = i;
-
-            points[i++].set( c.xInner( it.cos() ), c.yInner( it.sin() ) );
-        }
-
-        inverted = !inverted;
-    }
-
-    *indexes++ = 0;
-    *indexes++ = 1;
 }
 
 void QskRoundedRectRenderer::renderRect( const QRectF& rect,
@@ -533,9 +469,11 @@ void QskRoundedRectRenderer::renderRect( const QRectF& rect,
             HVRectEllipseIterator it( metrics, dir.vector() );
             QskVertex::fillBox( it, gradient, fillLineCount, fillLines );
 
+#if 1
             // prevent the border from starting at the wrong position
             metrics.preferredOrientation = dir.isVertical() ? Qt::Vertical : Qt::Horizontal;
             Q_ASSERT( metrics.preferredOrientation & metrics.stepSizeSymmetries );
+#endif
         }
     }
 
@@ -544,7 +482,7 @@ void QskRoundedRectRenderer::renderRect( const QRectF& rect,
         if ( extraLine )
             borderLines++;
 
-        stroker.createBox( borderLines, borderColors, nullptr, gradient );
+        stroker.createBorder( borderLines, borderColors );
 
         if ( extraLine )
         {

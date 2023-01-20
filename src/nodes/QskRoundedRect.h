@@ -23,8 +23,6 @@ namespace QskRoundedRect
         BottomRight = Qt::BottomRightCorner
     };
 
-    int borderGradientLineCount( const QskBoxBorderColors& );
-
     class Metrics
     {
       public:
@@ -57,15 +55,15 @@ namespace QskRoundedRect
             }
 
             inline void setBorderLine( qreal cos, qreal sin,
-                QskVertex::Color color, QskVertex::ColoredLine& line ) const
+                QskVertex::Color color, QskVertex::ColoredLine* line ) const
             {
-                line.setLine( xInner( cos ), yInner( sin ),
+                line->setLine( xInner( cos ), yInner( sin ),
                     xOuter( cos ), yOuter( sin ), color );
             }
 
-            inline void setBorderLine( qreal cos, qreal sin, QskVertex::Line& line ) const
+            inline void setBorderLine( qreal cos, qreal sin, QskVertex::Line* line ) const
             {
-                line.setLine( xInner( cos ), yInner( sin ),
+                line->setLine( xInner( cos ), yInner( sin ),
                     xOuter( cos ), yOuter( sin ) );
             }
 
@@ -92,18 +90,6 @@ namespace QskRoundedRect
         Qt::Orientation preferredOrientation;
     };
 
-    class BorderGeometryLayout
-    {
-      public:
-        BorderGeometryLayout( const Metrics&, const QskBoxBorderColors& );
-
-        int cornerOffsets[ 4 ];
-        int edgeOffsets[ 4 ];
-
-        int closingOffsets[2];
-        int lineCount;
-    };
-
     class Stroker
     {
       public:
@@ -112,32 +98,39 @@ namespace QskRoundedRect
         {
         }
 
+        int fillLineCount() const;
+
         int fillLineCount( const QskGradient& ) const;
         int borderLineCount( const QskBoxBorderColors& ) const;
 
         void createBorderLines( QskVertex::Line* ) const;
+        void createFillLines( QskVertex::Line* ) const;
 
         void createBox(
             QskVertex::ColoredLine*, const QskBoxBorderColors&,
             QskVertex::ColoredLine*, const QskGradient& ) const;
 
+        void createFill( QskVertex::ColoredLine*, const QskGradient& ) const;
+        void createBorder( QskVertex::ColoredLine*, const QskBoxBorderColors& ) const;
+
+        void createFillFanLines( QSGGeometry& );
+
       private:
-        void createRegularBox(
-            QskVertex::ColoredLine*, const QskBoxBorderColors&,
-            QskVertex::ColoredLine*, const QskGradient& ) const;
+        void createRegularBorderLines( QskVertex::Line* ) const;
+        void createIrregularBorderLines( QskVertex::Line* ) const;
 
-        void createIrregularBox(
-            QskVertex::ColoredLine*, const QskBoxBorderColors&,
-            QskVertex::ColoredLine*, const QskGradient& ) const;
-
-        void createIrregularFill(
-            QskVertex::ColoredLine*, const QskGradient& ) const;
+        void createRegularBorder(
+            QskVertex::ColoredLine*, const QskBoxBorderColors& ) const;
 
         void createIrregularBorder(
             QskVertex::ColoredLine*, const QskBoxBorderColors& ) const;
 
         void setBorderGradientLines( Qt::Edge,
             const QskBoxBorderColors&, QskVertex::ColoredLine* ) const;
+
+        void createRegularBox(
+            QskVertex::ColoredLine*, const QskBoxBorderColors&,
+            QskVertex::ColoredLine*, const QskGradient& ) const;
 
         const Metrics& m_metrics;
     };

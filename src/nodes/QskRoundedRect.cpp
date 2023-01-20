@@ -17,11 +17,9 @@ namespace
 {
     inline int gradientLineCount( const QskGradient& borderGradient )
     {
+        // only the intermediate gradient lines !
         return qMax( 0, borderGradient.stepCount() - 1 );
     }
-
-    inline int edgeToIndex( Qt::Edge edge ) { return qCountTrailingZeroBits( (quint8) edge ); }
-    inline Qt::Edge indexToEdge( int index ) { return static_cast< Qt::Edge >( 1 << index ); }
 
     static inline void setGradientLineAt(
         Qt::Orientation orientation, qreal x1, qreal y1, qreal x2, qreal y2,
@@ -38,7 +36,80 @@ namespace
             line->setLine( x1, pos, x2, pos, stop.rgb() );
         }
     }
+}
 
+namespace
+{
+    inline int edgeToIndex( Qt::Edge edge ) { return qCountTrailingZeroBits( (quint8) edge ); }
+    inline Qt::Edge indexToEdge( int index ) { return static_cast< Qt::Edge >( 1 << index ); }
+
+    class BorderGeometryLayout
+    {
+      public:
+        BorderGeometryLayout( const QskRoundedRect::Metrics& metrics,
+            const QskBoxBorderColors& colors )
+        {
+            const struct
+            {
+                Qt::Corner corner;
+                Qt::Edge edge;
+            } order[4] =
+            {
+                // counter clockwise
+                { Qt::BottomRightCorner, Qt::RightEdge },
+                { Qt::TopRightCorner, Qt::TopEdge },
+                { Qt::TopLeftCorner, Qt::LeftEdge },
+                { Qt::BottomLeftCorner, Qt::BottomEdge }
+            };
+
+            /*
+                In case of horizontal filling the lines end at right edge,
+                while for vertical filling it is the bottom edge.
+             */
+            const int index0 = ( metrics.preferredOrientation == Qt::Horizontal ) ? 1 : 0;
+
+            int pos = index0;
+
+            for ( int i = 0; i < 4; i++ )
+            {
+                const int idx = ( index0 + i ) % 4;
+
+                const auto corner = order[ idx ].corner;
+                const auto edge = order[ idx ].edge;
+
+                this->cornerOffsets[ corner ] = pos;
+                pos += metrics.corner[ corner ].stepCount + 1;
+
+                this->edgeOffsets[ ::edgeToIndex( edge ) ] = pos;
+                pos += gradientLineCount( colors.gradientAt( edge ) );
+            }
+
+            if ( index0 == 0 )
+            {
+                this->closingOffsets[ 0 ] = 0;
+                this->closingOffsets[ 1 ] = pos;
+                this->lineCount = pos + 1;
+            }
+            else
+            {
+                pos--;
+
+                this->closingOffsets[ 0 ] = pos;
+                this->closingOffsets[ 1 ] = 0;
+                this->lineCount = pos + 1;
+            }
+        }
+
+        int cornerOffsets[ 4 ];
+        int edgeOffsets[ 4 ];
+
+        int closingOffsets[2];
+        int lineCount;
+    };
+}
+
+namespace
+{
     class BorderMap
     {
       public:
@@ -79,10 +150,10 @@ namespace
             }
         }
 
-        inline BorderMap( int stepCount, const QskGradient& g1, const QskGradient& g2 )
+        inline BorderMap( int stepCount, const QskVertex::Color c1, QskVertex::Color c2 )
             : m_stepCount( stepCount )
-            , m_color1( g1.rgbStart() )
-            , m_color2( g2.rgbEnd() )
+            , m_color1( c1 )
+            , m_color2( c2 )
         {
         }
 
@@ -104,14 +175,50 @@ namespace
       public:
         inline BorderMaps( int stepCount, const QskBoxBorderColors& colors )
             : maps{
-                { stepCount, colors.top(), colors.left() },
-                { stepCount, colors.right(), colors.top() },
-                { stepCount, colors.left(), colors.bottom() },
-                { stepCount, colors.bottom(), colors.right() } }
+                { stepCount, colors.top().rgbStart(), colors.left().rgbEnd() },
+                { stepCount, colors.top().rgbEnd(), colors.right().rgbStart() },
+                { stepCount, colors.bottom().rgbEnd(), colors.left().rgbStart() },
+                { stepCount, colors.bottom().rgbStart(), colors.right().rgbEnd() } }
         {
         }
 
         const BorderMap maps[4];
+    };
+}
+
+namespace
+{
+    class LineMap
+    {
+      public:
+        inline LineMap( const QskRoundedRect::Metrics& metrics )
+            : m_corners( metrics.corner )
+        {
+        }
+
+        inline void setHLine( int corner1, int corner2,
+            qreal cos, qreal sin, QskVertex::Line* line ) const
+        {
+            const qreal y = m_corners[ corner1 ].yInner( sin );
+
+            const qreal x1 = m_corners[ corner1 ].xInner( cos );
+            const qreal x2 = m_corners[ corner2 ].xInner( cos );
+
+            line->setLine( x1, y, x2, y );
+        }
+
+        inline void setVLine( int corner1, int corner2,
+            qreal cos, qreal sin, QskVertex::Line* line ) const
+        {
+            const qreal x = m_corners[ corner1 ].xInner( cos );
+
+            const qreal y1 = m_corners[ corner1 ].yInner( sin );
+            const qreal y2 = m_corners[ corner2 ].yInner( sin );
+
+            line->setLine( x, y1, x, y2 );
+        }
+
+        const QskRoundedRect::Metrics::Corner* m_corners;
     };
 
     class FillMap : public QskVertex::ColorMap
@@ -150,272 +257,210 @@ namespace
     };
 }
 
-int QskRoundedRect::borderGradientLineCount( const QskBoxBorderColors& bc )
+namespace QskRoundedRect
 {
-    return gradientLineCount( bc.left() ) + gradientLineCount( bc.top() )
-        + gradientLineCount( bc.right() ) + gradientLineCount( bc.bottom() );
-}
 
-
-QskRoundedRect::Metrics::Metrics( const QRectF& rect,
-        const QskBoxShapeMetrics& shape, const QskBoxBorderMetrics& border )
-    : outerQuad( rect )
-{
-#if 1
-    // is this one still needed ?
-    isRadiusRegular = shape.isRectellipse();
-#endif
-
+    Metrics::Metrics( const QRectF& rect,
+            const QskBoxShapeMetrics& shape, const QskBoxBorderMetrics& border )
+        : outerQuad( rect )
     {
-        const auto tl = shape.topLeft();
-        const auto tr = shape.topRight();
-        const auto bl = shape.bottomLeft();
-        const auto br = shape.bottomRight();
+    #if 1
+        // is this one still needed ?
+        isRadiusRegular = shape.isRectellipse();
+    #endif
 
-        if ( tl.isEmpty() || tr.isEmpty() || ( tl.height() == tr.height() ) )
         {
-            if ( bl.isEmpty() || br.isEmpty() || ( bl.height() == br.height() ) )
-                stepSizeSymmetries |= Qt::Vertical;
+            const auto tl = shape.topLeft();
+            const auto tr = shape.topRight();
+            const auto bl = shape.bottomLeft();
+            const auto br = shape.bottomRight();
+
+            if ( tl.isEmpty() || tr.isEmpty() || ( tl.height() == tr.height() ) )
+            {
+                if ( bl.isEmpty() || br.isEmpty() || ( bl.height() == br.height() ) )
+                    stepSizeSymmetries |= Qt::Vertical;
+            }
+
+            if ( tl.isEmpty() || bl.isEmpty() || ( tl.width() == bl.width() ) )
+            {
+                if ( tr.isEmpty() || br.isEmpty() || ( tr.width() == br.width() ) )
+                    stepSizeSymmetries |= Qt::Horizontal;
+            }
+
+            preferredOrientation = ( stepSizeSymmetries == Qt::Horizontal )
+                    ? Qt::Horizontal : Qt::Vertical;
         }
 
-        if ( tl.isEmpty() || bl.isEmpty() || ( tl.width() == bl.width() ) )
+        for ( int i = 0; i < 4; i++ )
         {
-            if ( tr.isEmpty() || br.isEmpty() || ( tr.width() == br.width() ) )
-                stepSizeSymmetries |= Qt::Horizontal;
-        }
+            auto& c = corner[ i ];
 
-#if 1
-        preferredOrientation = ( stepSizeSymmetries == Qt::Horizontal )
-                ? Qt::Horizontal : Qt::Vertical;
-#else
-        preferredOrientation = ( stepSizeSymmetries == Qt::Vertical )
-                ? Qt::Vertical : Qt::Horizontal;
-#endif
-    }
+            const QSizeF radius = shape.radius( static_cast< Qt::Corner >( i ) );
+            c.radiusX = qBound( 0.0, radius.width(), 0.5 * outerQuad.width );
+            c.radiusY = qBound( 0.0, radius.height(), 0.5 * outerQuad.height );
+            c.stepCount = ArcIterator::segmentHint( qMax( c.radiusX, c.radiusY ) );
 
-    for ( int i = 0; i < 4; i++ )
-    {
-        auto& c = corner[ i ];
-
-        const QSizeF radius = shape.radius( static_cast< Qt::Corner >( i ) );
-        c.radiusX = qBound( 0.0, radius.width(), 0.5 * outerQuad.width );
-        c.radiusY = qBound( 0.0, radius.height(), 0.5 * outerQuad.height );
-        c.stepCount = ArcIterator::segmentHint( qMax( c.radiusX, c.radiusY ) );
-
-        switch ( i )
-        {
-            case TopLeft:
-                c.centerX = outerQuad.left + c.radiusX;
-                c.centerY = outerQuad.top + c.radiusY;
-                c.sx = -1.0;
-                c.sy = -1.0;
-                break;
-
-            case TopRight:
-                c.centerX = outerQuad.right - c.radiusX;
-                c.centerY = outerQuad.top + c.radiusY;
-                c.sx = +1.0;
-                c.sy = -1.0;
-                break;
-
-            case BottomLeft:
-                c.centerX = outerQuad.left + c.radiusX;
-                c.centerY = outerQuad.bottom - c.radiusY;
-                c.sx = -1.0;
-                c.sy = +1.0;
-                break;
-
-            case BottomRight:
-                c.centerX = outerQuad.right - c.radiusX;
-                c.centerY = outerQuad.bottom - c.radiusY;
-                c.sx = +1.0;
-                c.sy = +1.0;
-                break;
-        }
-    }
-
-    centerQuad.left = qMax( corner[ TopLeft ].centerX,
-        corner[ BottomLeft ].centerX );
-
-    centerQuad.right = qMin( corner[ TopRight ].centerX,
-        corner[ BottomRight ].centerX );
-
-    centerQuad.top = qMax( corner[ TopLeft ].centerY,
-        corner[ TopRight ].centerY );
-
-    centerQuad.bottom = qMin( corner[ BottomLeft ].centerY,
-        corner[ BottomRight ].centerY );
-
-    centerQuad.width = centerQuad.right - centerQuad.left;
-    centerQuad.height = centerQuad.bottom - centerQuad.top;
-
-    // now the bounding rectangle of the fill area
-
-    const auto bw = border.widths();
-
-    innerQuad.left = outerQuad.left + bw.left();
-    innerQuad.right = outerQuad.right - bw.right();
-    innerQuad.top = outerQuad.top + bw.top();
-    innerQuad.bottom = outerQuad.bottom - bw.bottom();
-
-    innerQuad.left = qMin( innerQuad.left, centerQuad.right );
-    innerQuad.right = qMax( innerQuad.right, centerQuad.left );
-    innerQuad.top = qMin( innerQuad.top, centerQuad.bottom );
-    innerQuad.bottom = qMax( innerQuad.bottom, centerQuad.top );
-
-    if ( innerQuad.left > innerQuad.right )
-    {
-        innerQuad.left = innerQuad.right =
-            innerQuad.right + 0.5 * ( innerQuad.left - innerQuad.right );
-    }
-
-    if ( innerQuad.top > innerQuad.bottom )
-    {
-        innerQuad.top = innerQuad.bottom =
-            innerQuad.bottom + 0.5 * ( innerQuad.top - innerQuad.bottom );
-    }
-
-    innerQuad.width = innerQuad.right - innerQuad.left;
-    innerQuad.height = innerQuad.bottom - innerQuad.top;
-
-    const qreal borderLeft = innerQuad.left - outerQuad.left;
-    const qreal borderTop = innerQuad.top - outerQuad.top;
-    const qreal borderRight = outerQuad.right - innerQuad.right;
-    const qreal borderBottom = outerQuad.bottom - innerQuad.bottom;
-
-    for ( int i = 0; i < 4; i++ )
-    {
-        auto& c = corner[ i ];
-
-        switch ( i )
-        {
-            case TopLeft:
+            switch ( i )
             {
-                c.radiusInnerX = c.radiusX - borderLeft;
-                c.radiusInnerY = c.radiusY - borderTop;
+                case TopLeft:
+                    c.centerX = outerQuad.left + c.radiusX;
+                    c.centerY = outerQuad.top + c.radiusY;
+                    c.sx = -1.0;
+                    c.sy = -1.0;
+                    break;
 
-                c.isCropped = ( c.centerX <= innerQuad.left ) ||
-                    ( c.centerY <= innerQuad.top );
+                case TopRight:
+                    c.centerX = outerQuad.right - c.radiusX;
+                    c.centerY = outerQuad.top + c.radiusY;
+                    c.sx = +1.0;
+                    c.sy = -1.0;
+                    break;
 
-                break;
-            }
-            case TopRight:
-            {
-                c.radiusInnerX = c.radiusX - borderRight;
-                c.radiusInnerY = c.radiusY - borderTop;
+                case BottomLeft:
+                    c.centerX = outerQuad.left + c.radiusX;
+                    c.centerY = outerQuad.bottom - c.radiusY;
+                    c.sx = -1.0;
+                    c.sy = +1.0;
+                    break;
 
-                c.isCropped = ( c.centerX >= innerQuad.right ) ||
-                    ( c.centerY <= innerQuad.top );
-                break;
-            }
-            case BottomLeft:
-            {
-                c.radiusInnerX = c.radiusX - borderLeft;
-                c.radiusInnerY = c.radiusY - borderBottom;
-
-                c.isCropped = ( c.centerX <= innerQuad.left ) ||
-                    ( c.centerY >= innerQuad.bottom );
-                break;
-            }
-            case BottomRight:
-            {
-                c.radiusInnerX = c.radiusX - borderRight;
-                c.radiusInnerY = c.radiusY - borderBottom;
-
-                c.isCropped = ( c.centerX >= innerQuad.right ) ||
-                    ( c.centerY >= innerQuad.bottom );
-                break;
+                case BottomRight:
+                    c.centerX = outerQuad.right - c.radiusX;
+                    c.centerY = outerQuad.bottom - c.radiusY;
+                    c.sx = +1.0;
+                    c.sy = +1.0;
+                    break;
             }
         }
 
-        if ( c.radiusInnerX >= 0.0 )
+        centerQuad.left = qMax( corner[ TopLeft ].centerX,
+            corner[ BottomLeft ].centerX );
+
+        centerQuad.right = qMin( corner[ TopRight ].centerX,
+            corner[ BottomRight ].centerX );
+
+        centerQuad.top = qMax( corner[ TopLeft ].centerY,
+            corner[ TopRight ].centerY );
+
+        centerQuad.bottom = qMin( corner[ BottomLeft ].centerY,
+            corner[ BottomRight ].centerY );
+
+        centerQuad.width = centerQuad.right - centerQuad.left;
+        centerQuad.height = centerQuad.bottom - centerQuad.top;
+
+        // now the bounding rectangle of the fill area
+
+        const auto bw = border.widths();
+
+        innerQuad.left = outerQuad.left + bw.left();
+        innerQuad.right = outerQuad.right - bw.right();
+        innerQuad.top = outerQuad.top + bw.top();
+        innerQuad.bottom = outerQuad.bottom - bw.bottom();
+
+        innerQuad.left = qMin( innerQuad.left, centerQuad.right );
+        innerQuad.right = qMax( innerQuad.right, centerQuad.left );
+        innerQuad.top = qMin( innerQuad.top, centerQuad.bottom );
+        innerQuad.bottom = qMax( innerQuad.bottom, centerQuad.top );
+
+        if ( innerQuad.left > innerQuad.right )
         {
-            c.x0 = 0.0;
-            c.rx = c.radiusInnerX;
+            innerQuad.left = innerQuad.right =
+                innerQuad.right + 0.5 * ( innerQuad.left - innerQuad.right );
         }
-        else
+
+        if ( innerQuad.top > innerQuad.bottom )
         {
-            c.x0 = c.radiusInnerX;
-            c.rx = 0.0;
+            innerQuad.top = innerQuad.bottom =
+                innerQuad.bottom + 0.5 * ( innerQuad.top - innerQuad.bottom );
         }
 
-        if ( c.radiusInnerY >= 0.0 )
+        innerQuad.width = innerQuad.right - innerQuad.left;
+        innerQuad.height = innerQuad.bottom - innerQuad.top;
+
+        const qreal borderLeft = innerQuad.left - outerQuad.left;
+        const qreal borderTop = innerQuad.top - outerQuad.top;
+        const qreal borderRight = outerQuad.right - innerQuad.right;
+        const qreal borderBottom = outerQuad.bottom - innerQuad.bottom;
+
+        for ( int i = 0; i < 4; i++ )
         {
-            c.y0 = 0.0;
-            c.ry = c.radiusInnerY;
+            auto& c = corner[ i ];
+
+            switch ( i )
+            {
+                case TopLeft:
+                {
+                    c.radiusInnerX = c.radiusX - borderLeft;
+                    c.radiusInnerY = c.radiusY - borderTop;
+
+                    c.isCropped = ( c.centerX <= innerQuad.left ) ||
+                        ( c.centerY <= innerQuad.top );
+
+                    break;
+                }
+                case TopRight:
+                {
+                    c.radiusInnerX = c.radiusX - borderRight;
+                    c.radiusInnerY = c.radiusY - borderTop;
+
+                    c.isCropped = ( c.centerX >= innerQuad.right ) ||
+                        ( c.centerY <= innerQuad.top );
+                    break;
+                }
+                case BottomLeft:
+                {
+                    c.radiusInnerX = c.radiusX - borderLeft;
+                    c.radiusInnerY = c.radiusY - borderBottom;
+
+                    c.isCropped = ( c.centerX <= innerQuad.left ) ||
+                        ( c.centerY >= innerQuad.bottom );
+                    break;
+                }
+                case BottomRight:
+                {
+                    c.radiusInnerX = c.radiusX - borderRight;
+                    c.radiusInnerY = c.radiusY - borderBottom;
+
+                    c.isCropped = ( c.centerX >= innerQuad.right ) ||
+                        ( c.centerY >= innerQuad.bottom );
+                    break;
+                }
+            }
+
+            if ( c.radiusInnerX >= 0.0 )
+            {
+                c.x0 = 0.0;
+                c.rx = c.radiusInnerX;
+            }
+            else
+            {
+                c.x0 = c.radiusInnerX;
+                c.rx = 0.0;
+            }
+
+            if ( c.radiusInnerY >= 0.0 )
+            {
+                c.y0 = 0.0;
+                c.ry = c.radiusInnerY;
+            }
+            else
+            {
+                c.y0 = c.radiusInnerY;
+                c.ry = 0.0;
+            }
         }
-        else
-        {
-            c.y0 = c.radiusInnerY;
-            c.ry = 0.0;
-        }
-    }
 
-    isTotallyCropped =
-        corner[ TopLeft ].isCropped &&
-        corner[ TopRight ].isCropped &&
-        corner[ BottomRight ].isCropped &&
-        corner[ BottomLeft ].isCropped;
+        isTotallyCropped =
+            corner[ TopLeft ].isCropped &&
+            corner[ TopRight ].isCropped &&
+            corner[ BottomRight ].isCropped &&
+            corner[ BottomLeft ].isCropped;
 
-    // number of steps for iterating over the corners
+        // number of steps for iterating over the corners
 
-    isBorderRegular =
-        ( borderLeft == borderTop ) &&
-        ( borderTop == borderRight ) &&
-        ( borderRight == borderBottom );
-}
-
-QskRoundedRect::BorderGeometryLayout::BorderGeometryLayout(
-    const Metrics& metrics, const QskBoxBorderColors& colors )
-{
-    const struct
-    {
-        Qt::Corner corner;
-        Qt::Edge edge;
-    } order[4] =
-    {
-        // counter clockwise
-        { Qt::BottomRightCorner, Qt::RightEdge },
-        { Qt::TopRightCorner, Qt::TopEdge },
-        { Qt::TopLeftCorner, Qt::LeftEdge },
-        { Qt::BottomLeftCorner, Qt::BottomEdge }
-    };
-
-    /*
-        In case of horizontal filling the lines end at right edge,
-        while for vertical filling it is the bottom edge.
-     */
-    const int index0 = ( metrics.preferredOrientation == Qt::Horizontal ) ? 1 : 0;
-
-    int pos = index0;
-
-    for ( int i = 0; i < 4; i++ )
-    {
-        const int idx = ( index0 + i ) % 4;
-
-        const auto corner = order[ idx ].corner;
-        const auto edge = order[ idx ].edge;
-
-        this->cornerOffsets[ corner ] = pos;
-        pos += metrics.corner[ corner ].stepCount + 1;
-
-        this->edgeOffsets[ ::edgeToIndex( edge ) ] = pos;
-        pos += gradientLineCount( colors.gradientAt( edge ) );
-    }
-
-    if ( index0 == 0 )
-    {
-        this->closingOffsets[ 0 ] = 0;
-        this->closingOffsets[ 1 ] = pos;
-        this->lineCount = pos + 1;
-    }
-    else
-    {
-        pos--;
-
-        this->closingOffsets[ 0 ] = pos;
-        this->closingOffsets[ 1 ] = 0;
-        this->lineCount = pos + 1;
+        isBorderRegular =
+            ( borderLeft == borderTop ) &&
+            ( borderTop == borderRight ) &&
+            ( borderRight == borderBottom );
     }
 }
 
@@ -508,8 +553,14 @@ void QskRoundedRect::Stroker::setBorderGradientLines(
 
 void QskRoundedRect::Stroker::createBorderLines( QskVertex::Line* lines ) const
 {
-    Q_ASSERT( m_metrics.isRadiusRegular );
+    if ( m_metrics.isRadiusRegular && !m_metrics.isTotallyCropped )
+        createRegularBorderLines( lines );
+    else
+        createIrregularBorderLines( lines );
+}
 
+void QskRoundedRect::Stroker::createRegularBorderLines( QskVertex::Line* lines ) const
+{
     const auto c = m_metrics.corner;
 
     const int stepCount = c[ 0 ].stepCount;
@@ -517,10 +568,7 @@ void QskRoundedRect::Stroker::createBorderLines( QskVertex::Line* lines ) const
     const BorderGeometryLayout borderLayout( m_metrics, QskBoxBorderColors() );
 
     const auto index = borderLayout.cornerOffsets;
-    /*
-        It would be possible to run over [0, 0.5 * M_PI_2]
-        and create 8 values ( instead of 4 ) in each step. TODO ...
-     */
+
     for ( ArcIterator it( stepCount, false ); !it.isDone(); ++it )
     {
         const int j = it.step();
@@ -529,144 +577,90 @@ void QskRoundedRect::Stroker::createBorderLines( QskVertex::Line* lines ) const
         const auto cos = it.cos();
         const auto sin = it.sin();
 
-        c[ TopLeft ].setBorderLine( cos, sin, lines[ index[ TopLeft ] + j] );
-        c[ BottomLeft ].setBorderLine( cos, sin, lines[ index[ BottomLeft ] + k ] );
-        c[ BottomRight ].setBorderLine( cos, sin, lines[ index[ BottomRight ] + j ] );
-        c[ TopRight ].setBorderLine( cos, sin, lines[ index[ TopRight ] + k ] );
+        c[ TopLeft ].setBorderLine( cos, sin, lines + index[ TopLeft ] + j );
+        c[ BottomLeft ].setBorderLine( cos, sin, lines + index[ BottomLeft ] + k );
+        c[ BottomRight ].setBorderLine( cos, sin, lines + index[ BottomRight ] + j );
+        c[ TopRight ].setBorderLine( cos, sin, lines + index[ TopRight ] + k );
     }
 
     lines[ borderLayout.closingOffsets[ 1 ] ]
         = lines[ borderLayout.closingOffsets[ 0 ] ];
 }
 
-void QskRoundedRect::Stroker::createBox(
-    QskVertex::ColoredLine* borderLines, const QskBoxBorderColors& borderColors,
-    QskVertex::ColoredLine* fillLines, const QskGradient& gradient ) const
+void QskRoundedRect::Stroker::createIrregularBorderLines( QskVertex::Line* lines ) const
 {
-    if ( m_metrics.isRadiusRegular && !m_metrics.isTotallyCropped )
-        createRegularBox( borderLines, borderColors, fillLines, gradient );
-    else
-        createIrregularBox( borderLines, borderColors, fillLines, gradient );
+    const BorderGeometryLayout borderLayout( m_metrics, QskBoxBorderColors() );
+
+    for ( int i = 0; i < 4; i++ )
+    {
+        const auto corner = static_cast< Qt::Corner >( i );
+
+        const auto& c = m_metrics.corner[ corner ];
+        auto l = lines + borderLayout.cornerOffsets[ corner ];
+
+        const bool inverted =
+            ( corner == Qt::BottomLeftCorner || corner == Qt::TopRightCorner );
+
+        for ( ArcIterator it( c.stepCount, inverted ); !it.isDone(); ++it )
+            c.setBorderLine( it.cos(), it.sin(), l++ );
+    }
+
+    lines[ borderLayout.closingOffsets[ 1 ] ]
+        = lines[ borderLayout.closingOffsets[ 0 ] ];
 }
 
-void QskRoundedRect::Stroker::createRegularBox(
-    QskVertex::ColoredLine* borderLines, const QskBoxBorderColors& borderColors,
-    QskVertex::ColoredLine* fillLines, const QskGradient& gradient ) const
+void QskRoundedRect::Stroker::createBorder(
+    QskVertex::ColoredLine* lines, const QskBoxBorderColors& colors ) const
 {
-    Q_ASSERT( fillLines == nullptr || ( gradient.isValid() && gradient.stepCount() <= 1 ) );
+    Q_ASSERT( lines != nullptr );
 
-    const auto& c = m_metrics.corner;
-    const int stepCount = c[ 0 ].stepCount;
-
-    const BorderMaps borderMaps( stepCount, borderColors );
-
-    QskVertex::ColoredLine* linesBR, * linesTR, * linesTL, * linesBL;
-    linesBR = linesTR = linesTL = linesBL = nullptr;
-
-    const int numCornerLines = stepCount + 1;
-    const int numFillLines = fillLines ? 2 * numCornerLines : 0;
-
-    if ( m_metrics.preferredOrientation == Qt::Horizontal )
-    {
-        if ( borderLines )
-        {
-            linesTR = borderLines + 1;
-            linesTL = linesTR + numCornerLines + gradientLineCount( borderColors.top() );
-            linesBL = linesTL + numCornerLines + gradientLineCount( borderColors.left() );
-            linesBR = linesBL + numCornerLines + gradientLineCount( borderColors.bottom() );
-        }
-    }
+    if ( m_metrics.isRadiusRegular && !m_metrics.isTotallyCropped )
+        createRegularBorder( lines, colors );
     else
-    {
-        if ( borderLines )
-        {
-            linesBR = borderLines;
-            linesTR = linesBR + numCornerLines + gradientLineCount( borderColors.right() );
-            linesTL = linesTR + numCornerLines + gradientLineCount( borderColors.top() );
-            linesBL = linesTL + numCornerLines + gradientLineCount( borderColors.left() );
-        }
-    }
+        createIrregularBorder( lines, colors );
+}
 
-    const FillMap fillMap( m_metrics, gradient );
+void QskRoundedRect::Stroker::createRegularBorder(
+    QskVertex::ColoredLine* lines, const QskBoxBorderColors& colors ) const
+{
+    const int stepCount = m_metrics.corner[ 0 ].stepCount;
 
-    /*
-        It would be possible to run over [0, 0.5 * M_PI_2]
-        and create 8 values ( instead of 4 ) in each step. TODO ...
-     */
+    const BorderMaps bm( stepCount, colors );
+    const BorderGeometryLayout bl( m_metrics, colors );
+
+    const auto maps = bm.maps;
+
+    auto linesTL = lines + bl.cornerOffsets[ TopLeft ];
+    auto linesTR = lines + bl.cornerOffsets[ TopRight ] + stepCount;
+    auto linesBL = lines + bl.cornerOffsets[ BottomLeft ] + stepCount;
+    auto linesBR = lines + bl.cornerOffsets[ BottomRight ];
+
     for ( ArcIterator it( stepCount, false ); !it.isDone(); ++it )
     {
-        const auto cos = it.cos();
-        const auto sin = it.sin();
+        const qreal cos = it.cos();
+        const qreal sin = it.sin();
+        const int i =  it.step();
 
-        if ( borderLines )
-        {
-            const int j = it.step();
-            const int k = stepCount - it.step();
+        m_metrics.corner[ TopLeft ].setBorderLine(
+            cos, sin, maps[ TopLeft ].colorAt( i ), linesTL++ );
 
-            {
-                constexpr auto corner = TopLeft;
+        m_metrics.corner[ TopRight ].setBorderLine(
+            cos, sin, maps[ TopRight ].colorAt( i ), linesTR-- );
 
-                c[ corner ].setBorderLine( cos, sin,
-                    borderMaps.maps[ corner ].colorAt( j ), linesTL[ j ] );
-            }
+        m_metrics.corner[ BottomLeft ].setBorderLine(
+            cos, sin, maps[ BottomLeft ].colorAt( i ), linesBL-- );
 
-            {
-                constexpr auto corner = TopRight;
-
-                c[ corner ].setBorderLine( cos, sin,
-                    borderMaps.maps[ corner ].colorAt( k ), linesTR[ k ] );
-            }
-
-            {
-                constexpr auto corner = BottomLeft;
-
-                c[ corner ].setBorderLine( cos, sin,
-                    borderMaps.maps[ corner ].colorAt( k ), linesBL[ k ] );
-            }
-
-            {
-                constexpr auto corner = BottomRight;
-
-                c[ corner ].setBorderLine( cos, sin,
-                    borderMaps.maps[ corner ].colorAt( j ), linesBR[ j ] );
-            }
-        }
-
-        if ( fillLines )
-        {
-            if ( m_metrics.preferredOrientation == Qt::Horizontal )
-            {
-                const int j = stepCount - it.step();
-                const int k = numFillLines - 1 - stepCount + it.step();
-
-                fillMap.setVLine( TopLeft, BottomLeft, cos, sin, fillLines + j );
-                fillMap.setVLine( TopRight, BottomRight, cos, sin, fillLines + k );
-            }
-            else
-            {
-                const int j = it.step();
-                const int k = numFillLines - it.step() - 1;
-
-                fillMap.setHLine( TopLeft, TopRight, cos, sin, fillLines + j );
-                fillMap.setHLine( BottomLeft, BottomRight, cos, sin, fillLines + k );
-            }
-        }
+        m_metrics.corner[ BottomRight ].setBorderLine(
+            cos, sin, maps[ BottomRight ].colorAt( i ), linesBR++ );
     }
 
-    if ( borderLines )
+    for ( int i = 0; i < 4; i++ )
     {
-        setBorderGradientLines( Qt::TopEdge, borderColors, linesTR + numCornerLines );
-        setBorderGradientLines( Qt::BottomEdge, borderColors, linesBL + numCornerLines );
-        setBorderGradientLines( Qt::LeftEdge, borderColors, linesTL + numCornerLines );
-        setBorderGradientLines( Qt::RightEdge, borderColors, linesBR + numCornerLines );
-
-        const int k = 4 * numCornerLines + borderGradientLineCount( borderColors );
-
-        if ( m_metrics.preferredOrientation == Qt::Horizontal )
-            borderLines[ 0 ] = borderLines[ k ];
-        else
-            borderLines[ k ] = borderLines[ 0 ];
+        setBorderGradientLines( ::indexToEdge( i ), colors,
+            lines + bl.edgeOffsets[ i ] );
     }
+
+    lines[ bl.closingOffsets[ 1 ] ] = lines[ bl.closingOffsets[ 0 ] ];
 }
 
 void QskRoundedRect::Stroker::createIrregularBorder(
@@ -689,7 +683,7 @@ void QskRoundedRect::Stroker::createIrregularBorder(
         for ( ArcIterator it( c.stepCount, inverted ); !it.isDone(); ++it )
         {
             const int index = inverted ? it.stepCount() - it.step() : it.step();
-            c.setBorderLine( it.cos(), it.sin(), map.colorAt( index ), *l++ );
+            c.setBorderLine( it.cos(), it.sin(), map.colorAt( index ), l++ );
         }
 
         setBorderGradientLines( ::indexToEdge( i ), colors,
@@ -700,20 +694,11 @@ void QskRoundedRect::Stroker::createIrregularBorder(
         = lines[ borderLayout.closingOffsets[ 0 ] ];
 }
 
-void QskRoundedRect::Stroker::createIrregularFill(
-    QskVertex::ColoredLine* lines, const QskGradient& gradient ) const
+template< class Line, class FillMap >
+static inline void createIrregularFill(
+    const QskRoundedRect::Metrics& m_metrics, const FillMap& map, Line* lines )
 {
-    const FillMap fillMap( m_metrics, gradient );
-
-    if ( m_metrics.isTotallyCropped )
-    {
-        const auto& q = m_metrics.innerQuad;
-
-        fillMap.setLine( q.left, q.top, q.right, q.top, lines );
-        fillMap.setLine( q.left, q.bottom, q.right, q.bottom, lines + 1 );
-
-        return;
-    }
+    using namespace QskRoundedRect;
 
     const auto& c = m_metrics.corner;
 
@@ -726,38 +711,216 @@ void QskRoundedRect::Stroker::createIrregularFill(
         stepCount = qMax( c[TopLeft].stepCount, c[BottomLeft].stepCount );
 
         for ( ArcIterator it( stepCount, true ); !it.isDone(); ++it )
-            fillMap.setVLine( TopLeft, BottomLeft, it.cos(), it.sin(), line++ );
+            map.setVLine( TopLeft, BottomLeft, it.cos(), it.sin(), line++ );
 
         stepCount = qMax( c[TopRight].stepCount, c[BottomRight].stepCount );
 
         for ( ArcIterator it( stepCount, false ); !it.isDone(); ++it )
-            fillMap.setVLine( TopRight, BottomRight, it.cos(), it.sin(), line++ );
+            map.setVLine( TopRight, BottomRight, it.cos(), it.sin(), line++ );
     }
     else
     {
         stepCount = qMax( c[TopLeft].stepCount, c[TopRight].stepCount );
 
         for ( ArcIterator it( stepCount, false ); !it.isDone(); ++it )
-            fillMap.setHLine( TopLeft, TopRight, it.cos(), it.sin(), line++ );
+            map.setHLine( TopLeft, TopRight, it.cos(), it.sin(), line++ );
 
         stepCount = qMax( c[BottomLeft].stepCount, c[BottomRight].stepCount );
 
         for ( ArcIterator it( stepCount, true ); !it.isDone(); ++it )
-            fillMap.setHLine( BottomLeft, BottomRight, it.cos(), it.sin(), line++ );
+            map.setHLine( BottomLeft, BottomRight, it.cos(), it.sin(), line++ );
     }
 }
 
-void QskRoundedRect::Stroker::createIrregularBox(
+template< class Line, class FillMap >
+static inline void createRegularFill(
+    const QskRoundedRect::Metrics& m_metrics, const FillMap& map, Line* lines )
+{
+    using namespace QskRoundedRect;
+
+    const int stepCount = m_metrics.corner[ 0 ].stepCount;
+
+    Line* l1, *l2;
+
+    if ( m_metrics.preferredOrientation == Qt::Horizontal )
+    {
+        l1 = lines + stepCount;
+        l2 = lines + stepCount + 1;
+    }
+    else
+    {
+        l1 = lines;
+        l2 = lines + 2 * stepCount + 1;
+    }
+
+    for ( ArcIterator it( stepCount, false ); !it.isDone(); ++it )
+    {
+        const auto cos = it.cos();
+        const auto sin = it.sin();
+
+        if ( m_metrics.preferredOrientation == Qt::Horizontal )
+        {
+            map.setVLine( TopLeft, BottomLeft, cos, sin, l1-- );
+            map.setVLine( TopRight, BottomRight, cos, sin, l2++ );
+        }
+        else
+        {
+            map.setHLine( TopLeft, TopRight, cos, sin, l1++ );
+            map.setHLine( BottomLeft, BottomRight, cos, sin, l2-- );
+        }
+    }
+}
+
+void QskRoundedRect::Stroker::createFillLines( QskVertex::Line* lines ) const
+{
+    if ( m_metrics.isTotallyCropped )
+    {
+        const auto& q = m_metrics.innerQuad;
+
+        lines[0].setLine( q.left, q.top, q.right, q.top );
+        lines[1].setLine( q.left, q.bottom, q.right, q.bottom );
+    }
+    else if ( m_metrics.isRadiusRegular )
+    {
+        const LineMap map( m_metrics );
+        ::createRegularFill( m_metrics, map, lines );
+    }
+    else
+    {
+        const LineMap map( m_metrics );
+        ::createIrregularFill( m_metrics, map, lines );
+    }
+}
+
+void QskRoundedRect::Stroker::createFill(
+    QskVertex::ColoredLine* lines, const QskGradient& gradient ) const
+{
+    Q_ASSERT( lines && ( gradient.isValid() && gradient.stepCount() <= 1 ) );
+
+    const FillMap map( m_metrics, gradient );
+
+    if ( m_metrics.isTotallyCropped )
+    {
+        const auto& q = m_metrics.innerQuad;
+
+        map.setLine( q.left, q.top, q.right, q.top, lines );
+        map.setLine( q.left, q.bottom, q.right, q.bottom, lines + 1 );
+    }
+    else if ( m_metrics.isRadiusRegular )
+    {
+        ::createRegularFill( m_metrics, map, lines );
+    }
+    else
+    {
+        ::createIrregularFill( m_metrics, map, lines );
+    }
+}
+
+void QskRoundedRect::Stroker::createBox(
     QskVertex::ColoredLine* borderLines, const QskBoxBorderColors& borderColors,
     QskVertex::ColoredLine* fillLines, const QskGradient& gradient ) const
 {
+    Q_ASSERT( borderLines || fillLines );
     Q_ASSERT( fillLines == nullptr || ( gradient.isValid() && gradient.stepCount() <= 1 ) );
 
+    if ( m_metrics.isRadiusRegular && !m_metrics.isTotallyCropped )
+    {
+        if ( borderLines && fillLines )
+        {
+            /*
+                Doing all in one allows a slightly faster implementation.
+                As this is the by far most common situation we do this
+                micro optimization.
+             */
+            createRegularBox( borderLines, borderColors, fillLines, gradient );
+            return;
+        }
+    }
+
     if ( borderLines )
-        createIrregularBorder( borderLines, borderColors );
+        createBorder( borderLines, borderColors );
 
     if ( fillLines )
-        createIrregularFill( fillLines, gradient );
+        createFill( fillLines, gradient );
+}
+
+void QskRoundedRect::Stroker::createRegularBox(
+    QskVertex::ColoredLine* borderLines, const QskBoxBorderColors& borderColors,
+    QskVertex::ColoredLine* fillLines, const QskGradient& gradient ) const
+{
+    const int stepCount = m_metrics.corner[ 0 ].stepCount;
+
+    const BorderMaps borderMaps( stepCount, borderColors );
+    const BorderGeometryLayout bl( m_metrics, borderColors );
+
+    const FillMap fillMap( m_metrics, gradient );
+
+    /*
+        It would be possible to run over [0, 0.5 * M_PI_2]
+        and create 8 values ( instead of 4 ) in each step. TODO ...
+     */
+
+    QskVertex::ColoredLine* l1, *l2;
+
+    if ( m_metrics.preferredOrientation == Qt::Horizontal )
+    {
+        l1 = fillLines + stepCount;
+        l2 = fillLines + stepCount + 1;
+    }
+    else
+    {
+        l1 = fillLines;
+        l2 = fillLines + 2 * stepCount + 1;
+    }
+
+    auto linesTL = borderLines + bl.cornerOffsets[ TopLeft ];
+    auto linesTR = borderLines + bl.cornerOffsets[ TopRight ] + stepCount;
+    auto linesBL = borderLines + bl.cornerOffsets[ BottomLeft ] + stepCount;
+    auto linesBR = borderLines + bl.cornerOffsets[ BottomRight ];
+
+    const auto maps = borderMaps.maps;
+
+    for ( ArcIterator it( stepCount, false ); !it.isDone(); ++it )
+    {
+        const qreal cos = it.cos();
+        const qreal sin = it.sin();
+        const int i = it.step();
+
+        m_metrics.corner[ TopLeft ].setBorderLine(
+            cos, sin, maps[ TopLeft ].colorAt( i ), linesTL++ );
+
+        m_metrics.corner[ TopRight ].setBorderLine(
+            cos, sin, maps[ TopRight ].colorAt( i ), linesTR-- );
+
+        m_metrics.corner[ BottomLeft ].setBorderLine(
+            cos, sin, maps[ BottomLeft ].colorAt( i ), linesBL-- );
+
+        m_metrics.corner[ BottomRight ].setBorderLine(
+            cos, sin, maps[ BottomRight ].colorAt( i ), linesBR++ );
+
+        if ( m_metrics.preferredOrientation == Qt::Horizontal )
+        {
+            fillMap.setVLine( TopLeft, BottomLeft, cos, sin, l1-- );
+            fillMap.setVLine( TopRight, BottomRight, cos, sin, l2++ );
+        }
+        else
+        {
+            fillMap.setHLine( TopLeft, TopRight, cos, sin, l1++ );
+            fillMap.setHLine( BottomLeft, BottomRight, cos, sin, l2-- );
+        }
+    }
+
+    if ( borderLines )
+    {
+        for ( int i = 0; i < 4; i++ )
+        {
+            setBorderGradientLines( ::indexToEdge( i ), borderColors,
+                borderLines + bl.edgeOffsets[ i ] );
+        }
+
+        borderLines[ bl.closingOffsets[ 1 ] ]
+            = borderLines[ bl.closingOffsets[ 0 ] ];
+    }
 }
 
 int QskRoundedRect::Stroker::borderLineCount( const QskBoxBorderColors& colors ) const
@@ -774,7 +937,11 @@ int QskRoundedRect::Stroker::borderLineCount( const QskBoxBorderColors& colors )
     int n = 4;
 
     n += c[0].stepCount + c[1].stepCount + c[2].stepCount + c[3].stepCount;
-    n += borderGradientLineCount( colors );
+
+    n += gradientLineCount( colors.left() );
+    n += gradientLineCount( colors.top() );
+    n += gradientLineCount( colors.right() );
+    n += gradientLineCount( colors.bottom() );
 
     n++; // duplicating the first line at the end to close the border path
 
@@ -786,6 +953,11 @@ int QskRoundedRect::Stroker::fillLineCount( const QskGradient& gradient ) const
     if ( !gradient.isVisible() )
         return 0;
 
+    return fillLineCount();
+}
+
+int QskRoundedRect::Stroker::fillLineCount() const
+{
     if ( m_metrics.isTotallyCropped )
         return 2;
 
@@ -810,4 +982,82 @@ int QskRoundedRect::Stroker::fillLineCount( const QskGradient& gradient ) const
     }
 
     return n;
+}
+
+void QskRoundedRect::Stroker::createFillFanLines( QSGGeometry& geometry )
+{
+    if ( ( m_metrics.innerQuad.width <= 0 ) || ( m_metrics.innerQuad.height <= 0 ) )
+    {
+        geometry.allocate( 0 );
+        return;
+    }
+
+    const auto& in = m_metrics.innerQuad;
+
+    if ( m_metrics.isTotallyCropped )
+    {
+        // degenerated to a rectangle
+
+        geometry.allocate( 4 );
+
+        auto p = geometry.vertexDataAsPoint2D();
+        p[0].set( in.left, in.top );
+        p[1].set( in.right, in.top );
+        p[2].set( in.left, in.bottom );
+        p[3].set( in.right, in.bottom );
+
+        return;
+    }
+
+    /*
+        Unfortunately QSGGeometry::DrawTriangleFan is no longer supported with
+        Qt6 and we have to go with DrawTriangleStrip, duplicating the center with
+        each vertex.
+
+        However we need less memory, when using Horizontal/Vertical lines
+        instead of the fan. TODO ...
+     */
+
+    const auto numPoints =
+            m_metrics.corner[0].stepCount
+            + m_metrics.corner[1].stepCount
+            + m_metrics.corner[2].stepCount
+            + m_metrics.corner[3].stepCount + 4;
+
+    /*
+        points: center point + interpolated corner points
+        indexes: lines between the center and each point, where
+                 the first line needs to be appended to close the filling
+     */
+
+    geometry.allocate( 1 + numPoints, 2 * ( numPoints + 1 ) );
+
+    Q_ASSERT( geometry.sizeOfIndex() == 2 );
+
+    auto points = geometry.vertexDataAsPoint2D();
+    auto indexes = geometry.indexDataAsUShort();
+
+    int i = 0;
+
+    points[i++].set( in.left + 0.5 * in.width, in.top + 0.5 * in.height );
+
+    bool inverted = false;
+
+    for ( const auto corner : { TopLeft, BottomLeft, BottomRight, TopRight } )
+    {
+        const auto& c = m_metrics.corner[ corner ];
+
+        for ( ArcIterator it( c.stepCount, inverted ); !it.isDone(); ++it )
+        {
+            *indexes++ = 0;
+            *indexes++ = i;
+
+            points[i++].set( c.xInner( it.cos() ), c.yInner( it.sin() ) );
+        }
+
+        inverted = !inverted;
+    }
+
+    *indexes++ = 0;
+    *indexes++ = 1;
 }
