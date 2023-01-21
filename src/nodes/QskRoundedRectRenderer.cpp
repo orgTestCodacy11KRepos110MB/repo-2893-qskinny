@@ -79,12 +79,12 @@ namespace
                 m_dt = vector.dx();
             }
 
-            const auto& mc1 = metrics.corner[ c[0] ];
-            const auto& mc2 = metrics.corner[ c[1] ];
+            const auto& mc1 = metrics.corners[ c[0] ];
+            const auto& mc2 = metrics.corners[ c[1] ];
             const auto& mc3 = ( mc1.stepCount >= mc2.stepCount ) ? mc1 : mc2;
 
-            const auto& mc4 = metrics.corner[ c[2] ];
-            const auto& mc5 = metrics.corner[ c[3] ];
+            const auto& mc4 = metrics.corners[ c[2] ];
+            const auto& mc5 = metrics.corners[ c[3] ];
             const auto& mc6 = ( mc4.stepCount >= mc5.stepCount ) ? mc4 : mc5;
 
             m_vector[0] = vectorAt( !m_vertical, false, mc1 );
@@ -295,29 +295,29 @@ static inline int qskFillLineCount2(
         return n;
     }
 
-    const auto c = metrics.corner;
+    const auto cn = metrics.corners;
 
     n += 2; // final lines at the opening/closing sides
 
     if ( dir.isVertical() )
     {
-        n += qMax( c[ TopLeft ].stepCount, c[ TopRight ].stepCount );
-        n += qMax( c[ BottomLeft ].stepCount, c[ BottomRight ].stepCount );
+        n += qMax( cn[ TopLeft ].stepCount, cn[ TopRight ].stepCount );
+        n += qMax( cn[ BottomLeft ].stepCount, cn[ BottomRight ].stepCount );
 
         if ( metrics.centerQuad.top >= metrics.centerQuad.bottom )
             n--; // opening/closing at the same position
     }
     else if ( dir.isHorizontal() )
     {
-        n += qMax( c[ TopLeft ].stepCount, c[ BottomLeft ].stepCount );
-        n += qMax( c[ TopRight ].stepCount, c[ BottomRight ].stepCount );
+        n += qMax( cn[ TopLeft ].stepCount, cn[ BottomLeft ].stepCount );
+        n += qMax( cn[ TopRight ].stepCount, cn[ BottomRight ].stepCount );
 
         if ( metrics.centerQuad.left >= metrics.centerQuad.right )
             n--; // opening/closing at the same position
     }
     else
     {
-        n += 2 * c[ 0 ].stepCount;
+        n += 2 * cn[ 0 ].stepCount;
 
         if ( metrics.centerQuad.left >= metrics.centerQuad.right )
             n--;
@@ -360,7 +360,7 @@ void QskRoundedRectRenderer::renderBorderGeometry(
         return;
     }
 
-    const int stepCount = metrics.corner[ 0 ].stepCount;
+    const int stepCount = metrics.corners[ 0 ].stepCount;
     const int lineCount = 4 * ( stepCount + 1 ) + 1;
 
     const auto lines = allocateLines< Line >( geometry, lineCount );

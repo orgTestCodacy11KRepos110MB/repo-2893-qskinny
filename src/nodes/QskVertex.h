@@ -231,7 +231,7 @@ namespace
             reset( stepCount, inverted );
         }
 
-        void reset( int stepCount, bool inverted )
+        void reset( int stepCount, bool inverted = false )
         {
             m_inverted = inverted;
 

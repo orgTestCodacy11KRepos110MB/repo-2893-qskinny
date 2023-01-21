@@ -61,7 +61,7 @@ namespace
 
             qreal xt, yt;
             {
-                const auto& c = m.corner[ Qt::TopLeftCorner ];
+                const auto& c = m.corners[ Qt::TopLeftCorner ];
 
                 const qreal k = c.radiusInnerY / c.radiusInnerX * md;
                 const qreal u = ::sqrt( 1.0 + k * k );
@@ -152,12 +152,12 @@ namespace
 
             if ( clockwise )
             {
-                if ( x2 >= metrics.corner[ Qt::TopRightCorner ].centerX )
+                if ( x2 >= metrics.corners[ Qt::TopRightCorner ].centerX )
                     setCorner( Qt::TopRightCorner, metrics );
             }
             else
             {
-                if ( y2 >= metrics.corner[ Qt::BottomLeftCorner ].centerY )
+                if ( y2 >= metrics.corners[ Qt::BottomLeftCorner ].centerY )
                     setCorner( Qt::BottomLeftCorner, metrics );
             }
         }
@@ -178,8 +178,8 @@ namespace
 
             using namespace Qt;
 
-            const auto& corners = metrics.corner;
-            const auto& c = corners[ m_corner ];
+            const auto cn = metrics.corners;
+            const auto& c = cn[ m_corner ];
 
             m_contourLine.p1 = m_contourLine.p2;
 
@@ -193,7 +193,7 @@ namespace
                     {
                         if ( p.x >= c.centerX )
                         {
-                            p.x = corners[ TopRightCorner ].centerX;
+                            p.x = cn[ TopRightCorner ].centerX;
                             p.y = metrics.innerQuad.top;
 
                             setCorner( TopRightCorner, metrics );
@@ -204,7 +204,7 @@ namespace
                             p.x = c.centerX - m_cos * c.radiusInnerX;
                             p.y = c.centerY - m_sin * c.radiusInnerY;
 
-                            if ( p.x >= corners[ TopRightCorner ].centerX )
+                            if ( p.x >= cn[ TopRightCorner ].centerX )
                                 setCorner( TopRightCorner, metrics );
                         }
 
@@ -215,7 +215,7 @@ namespace
                         if ( p.y >= c.centerY )
                         {
                             p.x = metrics.innerQuad.right;
-                            p.y = corners[ BottomRightCorner ].centerY;
+                            p.y = cn[ BottomRightCorner ].centerY;
 
                             setCorner( BottomRightCorner, metrics );
                         }
@@ -225,7 +225,7 @@ namespace
                             p.x = c.centerX + m_cos * c.radiusInnerX;
                             p.y = c.centerY - m_sin * c.radiusInnerY;
 
-                            if ( p.y >= corners[ BottomRightCorner ].centerY )
+                            if ( p.y >= cn[ BottomRightCorner ].centerY )
                                 setCorner( BottomRightCorner, metrics );
                         }
 
@@ -256,7 +256,7 @@ namespace
                         if ( p.y >= c.centerY )
                         {
                             p.x = metrics.innerQuad.left;
-                            p.y = corners[ BottomLeftCorner ].centerY;
+                            p.y = cn[ BottomLeftCorner ].centerY;
 
                             setCorner( BottomLeftCorner, metrics );
                         }
@@ -266,7 +266,7 @@ namespace
                             p.x = c.centerX - m_cos * c.radiusInnerX;
                             p.y = c.centerY - m_sin * c.radiusInnerY;
 
-                            if ( p.y >= corners[ BottomLeftCorner ].centerY )
+                            if ( p.y >= cn[ BottomLeftCorner ].centerY )
                                 setCorner( BottomLeftCorner, metrics );
                         }
 
@@ -276,7 +276,7 @@ namespace
                     {
                         if ( p.x >= c.centerX )
                         {
-                            p.x = corners[ BottomRightCorner ].centerX;
+                            p.x = cn[ BottomRightCorner ].centerX;
                             p.y = metrics.innerQuad.bottom;
 
                             setCorner( BottomRightCorner, metrics );
@@ -287,7 +287,7 @@ namespace
                             p.x = c.centerX - m_cos * c.radiusInnerX;
                             p.y = c.centerY + m_sin * c.radiusInnerY;
 
-                            if ( p.x >= corners[ BottomRightCorner ].centerX )
+                            if ( p.x >= cn[ BottomRightCorner ].centerX )
                                 setCorner( BottomRightCorner, metrics );
                         }
 
@@ -325,7 +325,7 @@ namespace
             Qt::Corner corner, const QskRoundedRect::Metrics& metrics )
         {
             m_corner = corner;
-            const auto& c = metrics.corner[ corner ];
+            const auto& c = metrics.corners[ corner ];
 
             const double angleStep = M_PI_2 / c.stepCount;
 
@@ -421,7 +421,7 @@ namespace
             : m_metrics( metrics )
             , m_curve( curve )
         {
-            const auto& c = metrics.corner[ Qt::TopLeftCorner ];
+            const auto& c = metrics.corners[ Qt::TopLeftCorner ];
 
 #if 1
             // This does not need to be done twice !!!

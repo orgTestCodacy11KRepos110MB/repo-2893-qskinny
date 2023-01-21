@@ -55,9 +55,6 @@ namespace QskVertex
       private:
         inline QskVertex::Color colorAt( qreal x, qreal y ) const
         {
-            if ( m_isMonochrome )
-                return m_color1;
-
             return m_color1.interpolatedTo( m_color2, valueAt( x, y ) );
         }
 
