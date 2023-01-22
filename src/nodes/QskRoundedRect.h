@@ -60,19 +60,6 @@ namespace QskRoundedRect
                 return centerY + sy * ( sin * radiusY );
             }
 
-            inline void setBorderLine( qreal cos, qreal sin,
-                QskVertex::Color color, QskVertex::ColoredLine* line ) const
-            {
-                line->setLine( xInner( cos ), yInner( sin ),
-                    xOuter( cos ), yOuter( sin ), color );
-            }
-
-            inline void setBorderLine( qreal cos, qreal sin, QskVertex::Line* line ) const
-            {
-                line->setLine( xInner( cos ), yInner( sin ),
-                    xOuter( cos ), yOuter( sin ) );
-            }
-
             bool isCropped;
 
             qreal centerX, centerY;
@@ -121,8 +108,6 @@ namespace QskRoundedRect
         void createBorderLines( QskVertex::Line* ) const;
         void createFillLines( QskVertex::Line* ) const;
 
-        void createFillFanLines( QSGGeometry& );
-
         /*
             QskVertex::ColoredLine ( = QSGGeometry::ColoredPoint2D )
 
@@ -130,7 +115,7 @@ namespace QskRoundedRect
             using the same shader regardless of the colors, what ends
             up in better scene graph batching
          */
-            
+
         int fillLineCount( const QskGradient& ) const;
         int borderLineCount( const QskBoxBorderColors& ) const;
 

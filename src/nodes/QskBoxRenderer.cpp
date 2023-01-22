@@ -143,51 +143,33 @@ bool QskBoxRenderer::isGradientSupported(
                 return false;
             }
 
-            if ( shape.isRectangle() )
+            if ( !shape.isRectangle() )
             {
-                return true;
+                const auto dir = gradient.linearDirection();
+                if ( dir.isTilted() )
+                {
+                    if ( gradient.stepCount() <= 1 )
+                    {
+                        // interpolating between 2 colors is implemented
+                        return dir.contains( QRectF( 0.0, 0.0, 1.0, 1.0 ) );
+                    }
+                    else
+                    {
+                        /*
+                            when having more than 2 colors we need to insert
+                            extra gradient lines and the contour also needs
+                            to be rendered by lines with this specific angle.
+
+                            This has only be implemeted for the most common
+                            situation of top/left -> bottom/right
+                         */
+                        return ( dir.x1() == 0.0 ) && ( dir.x2() == 1.0 )
+                            && ( dir.y1() == 0.0 ) && ( dir.y2() == 1.0 );
+                    }
+                }
             }
 
-            const auto dir = gradient.linearDirection();
-
-            if ( dir.isTilted() )
-            {
-                if ( gradient.stepCount() <= 1 )
-                    return dir.contains( QRectF( 0.0, 0.0, 1.0, 1.0 ) );
-
-                return ( dir.x1() == 0.0 ) && ( dir.x2() == 1.0 )
-                       && ( dir.y1() == 0.0 ) && ( dir.y2() == 1.0 );
-            }
-            else
-            {
-                qreal r1, r2, r3, r4;
-
-                if ( dir.isHorizontal() )
-                {
-                    r1 = shape.radius( Qt::TopLeftCorner ).width();
-                    r2 = shape.radius( Qt::BottomLeftCorner ).width();
-                    r3 = shape.radius( Qt::TopRightCorner ).width();
-                    r4 = shape.radius( Qt::BottomRightCorner ).width();
-                }
-                else
-                {
-                    r1 = shape.radius( Qt::TopLeftCorner ).height();
-                    r2 = shape.radius( Qt::TopRightCorner ).height();
-                    r3 = shape.radius( Qt::BottomLeftCorner ).height();
-                    r4 = shape.radius( Qt::BottomRightCorner ).height();
-                }
-
-                if ( ( r1 <= 0.0 || r2 <= 0.0 ) && ( r3 <= 0.0 || r4 <= 0.0 ) )
-                {
-                    // one of the corners is not rounded
-                    return true;
-                }
-
-                // different radii at opposite corners are not implemented TODO ...
-                return ( r1 == r2 ) && ( r3 == r4 );
-            }
-
-            return false;
+            return true;
         }
 
         default:

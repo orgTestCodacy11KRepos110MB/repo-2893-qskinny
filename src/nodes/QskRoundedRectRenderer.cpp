@@ -375,22 +375,10 @@ void QskRoundedRectRenderer::renderFillGeometry(
 {
     using namespace QskRoundedRect;
 
-    const Metrics metrics( rect, shape, border );
+    Stroker stroker( Metrics( rect, shape, border ) );
 
-    Stroker stroker( metrics );
-
-    if ( metrics.stepSizeSymmetries )
-    {
-        const int fillLineCount = stroker.fillLineCount();
-
-        auto lines = allocateLines< Line >( geometry, fillLineCount );
-        if ( fillLineCount )
-            stroker.createFillLines( lines );
-    }
-    else
-    {
-        stroker.createFillFanLines( geometry );
-    }
+    if ( auto lines = allocateLines< Line >( geometry, stroker.fillLineCount() ) )
+        stroker.createFillLines( lines );
 }
 
 void QskRoundedRectRenderer::renderRect( const QRectF& rect,
