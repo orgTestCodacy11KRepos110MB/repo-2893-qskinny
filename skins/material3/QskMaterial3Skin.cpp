@@ -9,9 +9,13 @@
 
 #include <QskBox.h>
 #include <QskCheckBox.h>
+#include <QskColorFilter.h>
 #include <QskDialogButtonBox.h>
 #include <QskFocusIndicator.h>
 #include <QskFunctions.h>
+#include <QskGraphic.h>
+#include <QskGraphicIO.h>
+#include <QskGraphicProvider.h>
 #include <QskInputPanelBox.h>
 #include <QskListView.h>
 #include <QskMenu.h>
@@ -23,6 +27,7 @@
 #include <QskSeparator.h>
 #include <QskShadowMetrics.h>
 #include <QskSlider.h>
+#include <QskStandardSymbol.h>
 #include <QskSubWindow.h>
 #include <QskSwitchButton.h>
 #include <QskSwitchButtonSkinlet.h>
@@ -98,12 +103,10 @@ namespace
         return value * factor;
     }
 
-#if 0
     inline double operator ""_dp( long double value )
     {
         return dpToPixels( value );
     }
-#endif
 
     inline double operator ""_dp( unsigned long long int value )
     {
@@ -219,29 +222,75 @@ void Editor::setupControl()
 
 void Editor::setupCheckBox()
 {
+    // skin hints are ordered according to
+    // https://m3.material.io/components/checkbox/specs
+
     using Q = QskCheckBox;
 
-    setSpacing( Q::Panel, 10_dp );
+    setSpacing( Q::Panel, 40_dp );
 
-    setStrutSize( Q::Box, 24_dp, 24_dp );
-
-    setPadding( Q::Box, 6_dp );
+    setStrutSize( Q::Box, 18_dp, 18_dp );
     setBoxShape( Q::Box, 2_dp );
-    setBoxBorderMetrics( Q::Box, 2_dp );
-    setBoxBorderColors( Q::Box, m_pal.onBackground );
+
+    setBoxBorderColors( Q::Box, m_pal.onSurface );
+#if 1
+    // hack: if border metrics == box shape, alpha value will be discarded
+    setBoxBorderMetrics( Q::Box, 1.99_dp );
+#endif
+
+    setGradient( Q::Box, m_pal.background ); // not mentioned in the specs, but needed for animation
+    setGradient( Q::Box | Q::Checked, m_pal.primary );
     setBoxBorderMetrics( Q::Box | Q::Checked, 0 );
 
-    setGradient( Q::Box, m_pal.background );
-    setGradient( Q::Box | Q::Checked, m_pal.primary );
-    setGradient( Q::Box | Q::Disabled, m_pal.surfaceVariant12 );
-    setGradient( Q::Box | Q::Checked | Q::Disabled, m_pal.onSurface12 );
+    setPadding( Q::Box, 3_dp ); // "icon size"
 
-    setColor( Q::Indicator, m_pal.background );
-    setColor( Q::Indicator | Q::Checked, m_pal.onPrimary );
-    setColor( Q::Indicator | Q::Checked | Q::Disabled, m_pal.onSurface38 );
+    setGraphicRole( Q::Indicator, QskMaterial3Skin::GraphicRoleOnPrimary );
 
-    setColor( Q::Text, m_pal.onBackground );
-    setTextOptions( Q::Text, Qt::ElideMiddle, QskTextOptions::NoWrap );
+    setBoxBorderColors( Q::Box | Q::Error, m_pal.error );
+
+    setGradient( Q::Box | Q::Checked | Q::Error, m_pal.error );
+
+    setGraphicRole( Q::Indicator | Q::Error, QskMaterial3Skin::GraphicRoleOnError );
+
+    setStrutSize( Q::Ripple, { 40_dp, 40_dp } );
+    setBoxShape( Q::Ripple, 100, Qt::RelativeSize );
+    setGradient( Q::Ripple, Qt::transparent );
+
+    setColor( Q::Text, m_pal.onBackground ); // not mentioned in the specs
+
+    // States
+
+    // 2. Disabled
+
+    setBoxBorderColors( Q::Box | Q::Disabled, m_pal.onSurface38 );
+    setBoxShape( Q::Box | Q::Disabled, 2_dp );
+
+    setGradient( Q::Box | Q::Disabled | Q::Checked, m_pal.onSurface38 );
+    setGradient( Q::Box | Q::Disabled | Q::Checked | Q::Error, m_pal.onSurface38 );
+
+    setGraphicRole( Q::Indicator | Q::Disabled | Q::Checked, QskMaterial3Skin::GraphicRoleSurface );
+
+    // 3. Hovered
+
+    setGradient( Q::Ripple | Q::Hovered | Q::Checked, m_pal.primary8 );
+    setGradient( Q::Ripple | Q::Hovered, m_pal.onSurface8 );
+    setGradient( Q::Ripple | Q::Error | Q::Hovered, m_pal.error8 );
+    setGradient( Q::Ripple | Q::Error | Q::Hovered | Q::Checked, m_pal.error8 );
+
+    // 4. Focused
+
+    setGradient( Q::Ripple | Q::Focused | Q::Checked, m_pal.primary12 );
+    setGradient( Q::Ripple | Q::Focused, m_pal.onSurface12 );
+    setGradient( Q::Ripple | Q::Error | Q::Focused, m_pal.error12 );
+    setGradient( Q::Ripple | Q::Error | Q::Focused | Q::Checked, m_pal.error12 );
+
+    // 5. Pressed
+
+    setGradient( Q::Ripple | Q::Pressed, m_pal.primary12 );
+    setGradient( Q::Ripple | Q::Pressed | Q::Checked, m_pal.primary12 );
+    setGradient( Q::Ripple | Q::Hovered | Q::Pressed, m_pal.primary12 );
+    setGradient( Q::Ripple | Q::Error | Q::Pressed, m_pal.error12 );
+    setGradient( Q::Ripple | Q::Error | Q::Pressed | Q::Checked, m_pal.error12 );
 }
 
 void Editor::setupBox()
@@ -907,8 +956,8 @@ QskMaterial3Theme::QskMaterial3Theme( Lightness lightness )
 {
 }
 
-QskMaterial3Theme::QskMaterial3Theme(Lightness lightness,
-                                    std::array<QskHctColor, NumPaletteTypes> palettes )
+QskMaterial3Theme::QskMaterial3Theme( Lightness lightness,
+                                      std::array< QskHctColor, NumPaletteTypes > palettes )
     : m_palettes( palettes )
 {
     if ( lightness == Light )
@@ -978,7 +1027,11 @@ QskMaterial3Theme::QskMaterial3Theme(Lightness lightness,
         shadow = m_palettes[ Neutral ].toned( 0 ).rgb();
     }
 
+    primary8 = QskRgb::toTransparentF( primary, 0.08 );
     primary12 = QskRgb::toTransparentF( primary, 0.12 );
+
+    error8 = QskRgb::toTransparentF( error, 0.08 );
+    error12 = QskRgb::toTransparentF( error, 0.12 );
 
     surface1 = flattenedColor( primary, background, 0.05 );
     surface2 = flattenedColor( primary, background, 0.08 );
@@ -986,6 +1039,7 @@ QskMaterial3Theme::QskMaterial3Theme(Lightness lightness,
     surface4 = flattenedColor( primary, background, 0.12 );
     surface5 = flattenedColor( primary, background, 0.14 );
 
+    onSurface8 = QskRgb::toTransparentF( onSurface, 0.08 );
     onSurface12 = QskRgb::toTransparentF( onSurface, 0.12 );
     onSurface38 = QskRgb::toTransparentF( onSurface, 0.38 );
 
@@ -996,10 +1050,26 @@ QskMaterial3Theme::QskMaterial3Theme(Lightness lightness,
     elevationLight3 = QskShadowMetrics( -1, 11, { 0, 2 } );
 }
 
+QskMaterial3GraphicProvder::QskMaterial3GraphicProvder( QObject* parent )
+    : Inherited( parent )
+{
+}
+
+const QskGraphic* QskMaterial3GraphicProvder::loadGraphic( const QString& id ) const
+{
+    const QString name = QString( ":/icons/qvg/%1.qvg" ).arg( id );
+    const QskGraphic graphic = QskGraphicIO::read( name );
+
+    return graphic.isNull() ? nullptr : new QskGraphic( graphic );
+}
+
 QskMaterial3Skin::QskMaterial3Skin( const QskMaterial3Theme& palette, QObject* parent )
     : Inherited( parent )
 {
+    addGraphicProvider( {}, new QskMaterial3GraphicProvder() );
+
     setupFonts();
+    setupGraphicFilters( palette );
 
     Editor editor( &hintTable(), palette );
     editor.setup();
@@ -1007,6 +1077,24 @@ QskMaterial3Skin::QskMaterial3Skin( const QskMaterial3Theme& palette, QObject* p
 
 QskMaterial3Skin::~QskMaterial3Skin()
 {
+}
+
+QskGraphic QskMaterial3Skin::symbol( int symbolType ) const
+{
+    switch ( symbolType )
+    {
+    case QskStandardSymbol::CheckMark:
+    {
+        const auto* provider = graphicProvider( {} );
+        return *( provider->requestGraphic( "check_small" ) );
+    }
+    case QskStandardSymbol::CrossMark:
+    {
+        return {};
+    }
+    default:
+        return Inherited::symbol( symbolType );
+    }
 }
 
 void QskMaterial3Skin::setupFonts()
@@ -1017,6 +1105,21 @@ void QskMaterial3Skin::setupFonts()
     setFont( M3BodyLarge, createFont( QStringLiteral( "Roboto Medium" ), 24_dp, 16_dp, 0.5, QFont::Normal ) );
     setFont( M3HeadlineSmall, createFont( QStringLiteral( "Roboto Regular" ), 32_dp, 28_dp, 0.0, QFont::Normal ) );
     setFont( M3LabelLarge, createFont( "Roboto Medium", 20_dp, 14_dp, 0.1, QFont::Medium ) );
+}
+
+void QskMaterial3Skin::setupGraphicFilters( const QskMaterial3Theme& palette )
+{
+    QskColorFilter onPrimaryFilter;
+    onPrimaryFilter.addColorSubstitution( Qt::white, palette.onPrimary );
+    setGraphicFilter( GraphicRoleOnPrimary, onPrimaryFilter );
+
+    QskColorFilter onErrorFilter;
+    onErrorFilter.addColorSubstitution( Qt::white, palette.onError );
+    setGraphicFilter( GraphicRoleOnError, onErrorFilter );
+
+    QskColorFilter surfaceFilter;
+    surfaceFilter.addColorSubstitution( Qt::white, palette.surface );
+    setGraphicFilter( GraphicRoleSurface, surfaceFilter );
 }
 
 #include "moc_QskMaterial3Skin.cpp"
