@@ -21,7 +21,7 @@ namespace
         return qMax( 0, borderGradient.stepCount() - 1 );
     }
 
-    static inline void setGradientLineAt(
+    inline void setGradientLineAt(
         Qt::Orientation orientation, qreal x1, qreal y1, qreal x2, qreal y2,
         const QskGradientStop& stop, QskVertex::ColoredLine* line )
     {
@@ -510,27 +510,21 @@ void QskRoundedRect::Stroker::setBorderGradientLines(
     {
         case Qt::LeftEdge:
         {
-            const auto& c1 = cn[ BottomLeft ];
-            const auto& c2 = cn[ TopLeft ];
-
             orientation = Qt::Vertical;
 
             x1 = m_metrics.innerQuad.left;
             x2 = m_metrics.outerQuad.left;
-            y1 = c1.isCropped ? c1.centerY + c1.radiusInnerY : c1.centerY;
-            y2 = c2.isCropped ? c2.centerY - c2.radiusInnerY : c2.centerY;
+            y1 = cn[ BottomLeft ].yInner( 0.0 );
+            y2 = cn[ TopLeft ].yInner( 0.0 );
 
             break;
         }
         case Qt::TopEdge:
         {
-            const auto& c1 = cn[ TopLeft ];
-            const auto& c2 = cn[ TopRight ];
-
             orientation = Qt::Horizontal;
 
-            x1 = c1.isCropped ? c1.centerX - c1.radiusInnerX : c1.centerX;
-            x2 = c2.isCropped ? c2.centerX + c2.radiusInnerX : c2.centerX;
+            x1 = cn[ TopLeft ].xInner( 0.0 );
+            x2 = cn[ TopRight ].xInner( 0.0 ) ;
             y1 = m_metrics.innerQuad.top;
             y2 = m_metrics.outerQuad.top;
 
@@ -538,13 +532,10 @@ void QskRoundedRect::Stroker::setBorderGradientLines(
         }
         case Qt::BottomEdge:
         {
-            const auto& c1 = cn[ BottomRight ];
-            const auto& c2 = cn[ BottomLeft ];
-
             orientation = Qt::Horizontal;
 
-            x1 = c1.isCropped ? c1.centerX + c1.radiusInnerX : c1.centerX;
-            x2 = c2.isCropped ? c2.centerX - c2.radiusInnerX : c2.centerX;
+            x1 = cn[ BottomRight ].xInner( 0.0 );
+            x2 = cn[ BottomLeft ].xInner( 0.0 );
             y1 = m_metrics.innerQuad.bottom;
             y2 = m_metrics.outerQuad.bottom;
 
@@ -552,15 +543,12 @@ void QskRoundedRect::Stroker::setBorderGradientLines(
         }
         case Qt::RightEdge:
         {
-            const auto& c1 = cn[ TopRight ];
-            const auto& c2 = cn[ BottomRight ];
-
             orientation = Qt::Vertical;
 
             x1 = m_metrics.innerQuad.right;
             x2 = m_metrics.outerQuad.right;
-            y1 = c1.isCropped ? c1.centerY + c1.radiusInnerY : c1.centerY;
-            y2 = c2.isCropped ? c2.centerY - c2.radiusInnerY : c2.centerY;
+            y1 = cn[ TopRight ].yInner( 0.0 );
+            y2 = cn[ BottomRight ].yInner( 0.0 );
 
             break;
         }

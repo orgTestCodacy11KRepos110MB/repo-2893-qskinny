@@ -16,6 +16,28 @@ class QskBoxShapeMetrics;
 
 namespace QskVertex
 {
+    inline ColoredLine* addGradientLines( const QLineF& l1, const QLineF& l2,
+        const QskGradient& gradient, ColoredLine* lines )
+    {
+        const auto stops = gradient.stops();
+
+        if ( stops.first().position() > 0.0 )
+            ( lines++ )->setLine( l1, stops.first().rgb() );
+
+        for( const auto& stop : stops )
+        {
+            const auto p1 = l1.p1() + stop.position() * ( l2.p1() - l1.p1() );
+            const auto p2 = l1.p2() + stop.position() * ( l2.p2() - l1.p2() );
+
+            ( lines++ )->setLine( p1, p2, stop.rgb() );
+        }
+
+        if ( stops.last().position() < 1.0 )
+            ( lines++ )->setLine( l2, stops.last().rgb() );
+
+        return lines;
+    }
+
     class ColorMap
     {
       public:
