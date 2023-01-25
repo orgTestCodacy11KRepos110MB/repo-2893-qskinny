@@ -265,89 +265,6 @@ static inline bool qskGradientLinesNeeded(
     }
 }
 
-static inline int qskFillLineCount2(
-    const QskRoundedRect::Metrics& metrics, const QskGradient& gradient )
-{
-    using namespace QskRoundedRect;
-
-    if ( !gradient.isVisible() )
-        return 0;
-
-    const auto dir = gradient.linearDirection();
-
-    int n = 0;
-
-    if ( !gradient.isMonochrome() )
-    {
-        // adding vertexes for the stops - beside the first/last
-
-        n += gradient.stepCount() - 1;
-        if ( !dir.contains( metrics.innerQuad ) )
-            n += 2;
-    }
-
-    if ( metrics.isTotallyCropped )
-    {
-        n += 2;
-        if ( dir.isTilted() )
-            n += 2; // extra contour lies for the corners
-
-        return n;
-    }
-
-    const auto cn = metrics.corners;
-
-    n += 2; // final lines at the opening/closing sides
-
-    if ( dir.isVertical() )
-    {
-        n += qMax( cn[ TopLeft ].stepCount, cn[ TopRight ].stepCount );
-        n += qMax( cn[ BottomLeft ].stepCount, cn[ BottomRight ].stepCount );
-
-        if ( metrics.centerQuad.top >= metrics.centerQuad.bottom )
-            n--; // opening/closing at the same position
-    }
-    else if ( dir.isHorizontal() )
-    {
-        n += qMax( cn[ TopLeft ].stepCount, cn[ BottomLeft ].stepCount );
-        n += qMax( cn[ TopRight ].stepCount, cn[ BottomRight ].stepCount );
-
-        if ( metrics.centerQuad.left >= metrics.centerQuad.right )
-            n--; // opening/closing at the same position
-    }
-    else
-    {
-        n += 2 * cn[ 0 ].stepCount;
-
-        if ( metrics.centerQuad.left >= metrics.centerQuad.right )
-            n--;
-
-        if ( metrics.centerQuad.top >= metrics.centerQuad.bottom )
-            n--;
-
-        /*
-            For diagonal lines the points at the opposite
-            side are no points interpolating the outline.
-            So we need to insert interpolating lines on both sides
-         */
-
-        n *= 2; // a real ellipse could be done with n lines: TODO ...
-
-#if 1
-        /*
-            The termination of the fill algorithm is a bit random
-            and might result in having an additional line.
-            Until this effect is completely understood, we better
-            reserve memory for this to avoid crashes.
-         */
-
-        n++; // happens in a corner case - needs to be understood: TODO
-#endif
-    }
-
-    return n;
-}
-
 void QskRoundedRectRenderer::renderBorderGeometry(
     const QRectF& rect, const QskBoxShapeMetrics& shape,
     const QskBoxBorderMetrics& border, QSGGeometry& geometry )
@@ -414,69 +331,82 @@ void QskRoundedRectRenderer::renderRect( const QRectF& rect,
     }
 
     const auto dir = gradient.linearDirection();
-    const auto isTilted = dir.isTilted();
 
-    const int fillLineCount = qskFillLineCount2( metrics, gradient );
-    const int borderLineCount = stroker.borderLineCount( borderColors );
+    int gradientLineCount = gradient.stepCount() - 1;
+    if ( !dir.contains( metrics.innerQuad ) )
+        gradientLineCount += 2;
 
-    int lineCount = borderLineCount + fillLineCount;
-
-    bool extraLine = false;
-    if ( borderLineCount > 0 && fillLineCount > 0 )
+    if ( metrics.isTotallyCropped )
     {
-        if ( isTilted )
+        const int borderCount = stroker.borderLineCount( borderColors );
+
+        int fillCount = 2 + gradientLineCount;
+        if ( dir.isTilted() )
+            fillCount += 2;
+
+        auto lines = allocateLines< ColoredLine >( geometry, borderCount + fillCount );
+
+        if ( fillCount )
+            QskRectRenderer::renderFill0( metrics.innerQuad, gradient, fillCount, lines );
+
+        if ( borderCount )
+            stroker.createBorder( lines + fillCount, borderColors );
+    }
+    else if ( !dir.isTilted() )
+    {
+        const int borderCount = stroker.borderLineCount( borderColors );
+        const int fillCount = stroker.fillLineCount() + gradientLineCount;
+
+        auto lines = allocateLines< ColoredLine >( geometry, borderCount + fillCount );
+
+        metrics.preferredOrientation = dir.isVertical() ? Qt::Vertical : Qt::Horizontal;
+
+        if ( fillCount )
+        {
+            HVRectEllipseIterator it( metrics, dir.vector() );
+            QskVertex::fillBox( it, gradient, fillCount, lines );
+        }
+
+        if ( borderCount )
+            stroker.createBorder( lines + fillCount, borderColors );
+    }
+    else
+    {
+        const int borderCount = stroker.borderLineCount( borderColors );
+
+        // why not using metrics.cornerStepCount()
+        const int stepCount = metrics.corners[ 0 ].stepCount; // is this correct ???
+
+        int fillCount = 2 + gradientLineCount + 2 * stepCount;
+        fillCount *= 2; 
+
+        if ( borderCount && fillCount  )
         {
             /*
                 The filling ends at 45° and we have no implementation
                 for creating the border from there. So we need to
                 insert an extra dummy line to connect fill and border
              */
-            extraLine = true;
-            lineCount++;
-        }
-    }
 
-    auto lines = allocateLines< ColoredLine >( geometry, lineCount );
+            auto lines = allocateLines< ColoredLine >(
+                geometry, fillCount + borderCount + 1 );
 
-    auto fillLines = fillLineCount ? lines : nullptr;
-    auto borderLines = borderLineCount ? lines + fillLineCount : nullptr;
+            renderDiagonalFill( metrics, gradient, fillCount, lines );
+            stroker.createBorder( lines + fillCount + 1, borderColors );
 
-    if ( fillLines )
-    {
-        if ( metrics.isTotallyCropped )
-        {
-            QskRectRenderer::renderFill0( metrics.innerQuad,
-                gradient, fillLineCount, lines );
-        }
-        else if ( isTilted )
-        {
-            renderDiagonalFill( metrics, gradient, fillLineCount, lines );
+            const auto l = lines + fillCount;
+            l[ 0 ].p1 = l[ -1 ].p2;
+            l[ 0 ].p2 = l[ 1 ].p1;
         }
         else
         {
-            HVRectEllipseIterator it( metrics, dir.vector() );
-            QskVertex::fillBox( it, gradient, fillLineCount, fillLines );
+            auto lines = allocateLines< ColoredLine >(
+                geometry, fillCount + borderCount );
 
-#if 1
-            // prevent the border from starting at the wrong position
-            metrics.preferredOrientation = dir.isVertical() ? Qt::Vertical : Qt::Horizontal;
-            Q_ASSERT( metrics.preferredOrientation & metrics.stepSizeSymmetries );
-#endif
-        }
-    }
+            renderDiagonalFill( metrics, gradient, fillCount, lines );
 
-    if ( borderLines )
-    {
-        if ( extraLine )
-            borderLines++;
-
-        stroker.createBorder( borderLines, borderColors );
-
-        if ( extraLine )
-        {
-            const auto l = borderLines - 1;
-            l[ 0 ].p1 = l[ -1 ].p2;
-            l[ 0 ].p2 = l[ 1 ].p1;
+            if ( borderCount )
+                stroker.createBorder( lines + fillCount, borderColors );
         }
     }
 }

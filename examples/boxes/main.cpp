@@ -69,14 +69,33 @@ static void addTestRectangle( QskLinearBox* parent )
     box->setMargins( 50 );
 
     box->setBorder( Box::Flat, QskRgb::OrangeRed );
-    box->setBorderWidth( 10, 20, 40, 20 );
 
-    QskBoxShapeMetrics shape( 50, Qt::RelativeSize );
+    QskBoxShapeMetrics shape;
+    shape.setSizeMode( Qt::RelativeSize );
+
+#if 0
+    shape.setRadius( Qt::TopLeftCorner, 50 );
+    shape.setRadius( Qt::BottomLeftCorner, 50 );
     shape.setRadius( Qt::BottomRightCorner, 30 );
     shape.setRadius( Qt::TopRightCorner, 70 );
 
     box->setShape( shape );
-    box->setTonalPalette( Box::Diagonal, QskRgb::DodgerBlue );
+    box->setBorderWidth( 10, 20, 40, 20 );
+#else
+    shape.setRadius( Qt::TopLeftCorner, 30, 10 );
+    shape.setRadius( Qt::TopRightCorner, 50, 90 );
+    shape.setRadius( Qt::BottomLeftCorner, 10, 60 );
+    shape.setRadius( Qt::BottomRightCorner, 60, 10 );
+
+    box->setShape( shape );
+    box->setBorderWidth( 5 );
+#endif
+
+#if TONAL_GRADIENTS
+    box->setTonalPalette( Box::Vertical, QskRgb::DodgerBlue );
+#else
+    box->setGradient( Box::Diagonal, QskRgb::DodgerBlue, QskRgb::DarkSlateBlue );
+#endif
 }
 
 static void addRectangles1( QskLinearBox* parent )

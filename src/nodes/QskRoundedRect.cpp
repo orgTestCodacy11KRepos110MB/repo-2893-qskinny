@@ -490,6 +490,11 @@ namespace QskRoundedRect
     }
 }
 
+QskRoundedRect::Stroker::Stroker( const Metrics& metrics )
+    : m_metrics( metrics )
+{
+}
+
 void QskRoundedRect::Stroker::setBorderGradientLines(
     Qt::Edge edge, const QskBoxBorderColors& colors,
     QskVertex::ColoredLine* lines ) const

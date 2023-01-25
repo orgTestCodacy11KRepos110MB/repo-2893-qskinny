@@ -86,10 +86,7 @@ namespace QskRoundedRect
     class Stroker
     {
       public:
-        inline Stroker( const Metrics& metrics )
-            : m_metrics( metrics )
-        {
-        }
+        Stroker( const Metrics& );
 
         /*
             QskVertex::Line ( = QSGGeometry::Point2D )
