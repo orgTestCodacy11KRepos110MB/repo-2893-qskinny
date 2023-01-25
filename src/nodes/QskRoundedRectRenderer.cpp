@@ -306,7 +306,7 @@ void QskRoundedRectRenderer::renderRect( const QRectF& rect,
     using namespace QskRoundedRect;
 
     Metrics metrics( rect, shape, border );
-    const Stroker stroker( metrics );
+    const Stroker stroker( metrics, borderColors, gradient );
 
     if ( metrics.innerQuad.isEmpty() ||
         !qskGradientLinesNeeded( metrics.innerQuad, gradient ) )
@@ -316,8 +316,8 @@ void QskRoundedRectRenderer::renderRect( const QRectF& rect,
             what allows using simpler and faster algos
          */
 
-        const int fillLineCount = stroker.fillLineCount( gradient );
-        const int borderLineCount = stroker.borderLineCount( borderColors );
+        const int fillLineCount = stroker.fillLineCount();
+        const int borderLineCount = stroker.borderLineCount();
 
         auto lines = allocateLines< ColoredLine >(
             geometry, borderLineCount + fillLineCount );
@@ -325,7 +325,7 @@ void QskRoundedRectRenderer::renderRect( const QRectF& rect,
         auto fillLines = fillLineCount ? lines : nullptr;
         auto borderLines = borderLineCount ? lines + fillLineCount : nullptr;
 
-        stroker.createBox( borderLines, borderColors, fillLines, gradient );
+        stroker.createBox( borderLines, fillLines );
 
         return;
     }
@@ -338,7 +338,7 @@ void QskRoundedRectRenderer::renderRect( const QRectF& rect,
 
     if ( metrics.isTotallyCropped )
     {
-        const int borderCount = stroker.borderLineCount( borderColors );
+        const int borderCount = stroker.borderLineCount();
 
         int fillCount = 2 + gradientLineCount;
         if ( dir.isTilted() )
@@ -350,11 +350,11 @@ void QskRoundedRectRenderer::renderRect( const QRectF& rect,
             QskRectRenderer::renderFill0( metrics.innerQuad, gradient, fillCount, lines );
 
         if ( borderCount )
-            stroker.createBorder( lines + fillCount, borderColors );
+            stroker.createBorder( lines + fillCount );
     }
     else if ( !dir.isTilted() )
     {
-        const int borderCount = stroker.borderLineCount( borderColors );
+        const int borderCount = stroker.borderLineCount();
         const int fillCount = stroker.fillLineCount() + gradientLineCount;
 
         auto lines = allocateLines< ColoredLine >( geometry, borderCount + fillCount );
@@ -368,11 +368,11 @@ void QskRoundedRectRenderer::renderRect( const QRectF& rect,
         }
 
         if ( borderCount )
-            stroker.createBorder( lines + fillCount, borderColors );
+            stroker.createBorder( lines + fillCount );
     }
     else
     {
-        const int borderCount = stroker.borderLineCount( borderColors );
+        const int borderCount = stroker.borderLineCount();
 
         // why not using metrics.cornerStepCount()
         const int stepCount = metrics.corners[ 0 ].stepCount; // is this correct ???
@@ -392,7 +392,7 @@ void QskRoundedRectRenderer::renderRect( const QRectF& rect,
                 geometry, fillCount + borderCount + 1 );
 
             renderDiagonalFill( metrics, gradient, fillCount, lines );
-            stroker.createBorder( lines + fillCount + 1, borderColors );
+            stroker.createBorder( lines + fillCount + 1 );
 
             const auto l = lines + fillCount;
             l[ 0 ].p1 = l[ -1 ].p2;
@@ -406,7 +406,7 @@ void QskRoundedRectRenderer::renderRect( const QRectF& rect,
             renderDiagonalFill( metrics, gradient, fillCount, lines );
 
             if ( borderCount )
-                stroker.createBorder( lines + fillCount, borderColors );
+                stroker.createBorder( lines + fillCount );
         }
     }
 }

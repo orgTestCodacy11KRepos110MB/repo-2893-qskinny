@@ -8,10 +8,10 @@
 
 #include "QskVertex.h"
 #include "QskRoundedRectRenderer.h"
+#include "QskBoxBorderColors.h"
 
 class QskBoxShapeMetrics;
 class QskBoxBorderMetrics;
-class QskBoxBorderColors;
 
 namespace QskRoundedRect
 {
@@ -83,10 +83,26 @@ namespace QskRoundedRect
         Qt::Orientation preferredOrientation;
     };
 
+    class GeometryLayout
+    {
+      public:
+        GeometryLayout( const QskRoundedRect::Metrics&, const QskBoxBorderColors& );
+
+        int cornerOffsets[ 4 ];
+        int edgeOffsets[ 4 ];
+
+        int closingOffsets[2];
+        int lineCount;
+    };
+    
     class Stroker
     {
       public:
         Stroker( const Metrics& );
+        Stroker( const Metrics&, const QskBoxBorderColors&, const QskGradient& );
+
+        int fillLineCount() const;
+        int borderLineCount() const;
 
         /*
             QskVertex::Line ( = QSGGeometry::Point2D )
@@ -99,9 +115,6 @@ namespace QskRoundedRect
                   ( = QskGradientMatrial )
          */
 
-        int fillLineCount() const;
-        int borderLineCount() const;
-
         void createBorderLines( QskVertex::Line* ) const;
         void createFillLines( QskVertex::Line* ) const;
 
@@ -113,25 +126,22 @@ namespace QskRoundedRect
             up in better scene graph batching
          */
 
-        int fillLineCount( const QskGradient& ) const;
-        int borderLineCount( const QskBoxBorderColors& ) const;
-
-        void createBox(
-            QskVertex::ColoredLine*, const QskBoxBorderColors&,
-            QskVertex::ColoredLine*, const QskGradient& ) const;
-
-        void createFill( QskVertex::ColoredLine*, const QskGradient& ) const;
-        void createBorder( QskVertex::ColoredLine*, const QskBoxBorderColors& ) const;
+        void createBox( QskVertex::ColoredLine*, QskVertex::ColoredLine* ) const;
+        void createFill( QskVertex::ColoredLine* ) const;
+        void createBorder( QskVertex::ColoredLine* ) const;
 
       private:
-        void setBorderGradientLines( Qt::Edge,
-            const QskBoxBorderColors&, QskVertex::ColoredLine* ) const;
+        void setBorderGradientLines( QskVertex::ColoredLine* ) const;
+        void setBorderGradientLines( Qt::Edge, QskVertex::ColoredLine* ) const;
 
-        void createRegularBox(
-            QskVertex::ColoredLine*, const QskBoxBorderColors&,
-            QskVertex::ColoredLine*, const QskGradient& ) const;
+        void createRegularBox( QskVertex::ColoredLine*, QskVertex::ColoredLine* ) const;
 
         const Metrics& m_metrics;
+        const QskBoxBorderColors m_borderColors;
+        const QskGradient m_gradient;
+        const GeometryLayout m_geometryLayout;
+
+        const bool m_isColored;
     };
 }
 

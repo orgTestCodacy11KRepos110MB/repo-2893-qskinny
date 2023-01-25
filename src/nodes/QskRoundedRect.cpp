@@ -36,76 +36,9 @@ namespace
             line->setLine( x1, pos, x2, pos, stop.rgb() );
         }
     }
-}
 
-namespace
-{
-    inline int edgeToIndex( Qt::Edge edge ) { return qCountTrailingZeroBits( (quint8) edge ); }
-    inline Qt::Edge indexToEdge( int index ) { return static_cast< Qt::Edge >( 1 << index ); }
-
-    class BorderGeometryLayout
-    {
-      public:
-        BorderGeometryLayout( const QskRoundedRect::Metrics& metrics,
-            const QskBoxBorderColors& colors )
-        {
-            const struct
-            {
-                Qt::Corner corner;
-                Qt::Edge edge;
-            } order[4] =
-            {
-                // counter clockwise
-                { Qt::BottomRightCorner, Qt::RightEdge },
-                { Qt::TopRightCorner, Qt::TopEdge },
-                { Qt::TopLeftCorner, Qt::LeftEdge },
-                { Qt::BottomLeftCorner, Qt::BottomEdge }
-            };
-
-            /*
-                In case of horizontal filling the lines end at right edge,
-                while for vertical filling it is the bottom edge.
-             */
-            const int index0 = ( metrics.preferredOrientation == Qt::Horizontal ) ? 1 : 0;
-
-            int pos = index0;
-
-            for ( int i = 0; i < 4; i++ )
-            {
-                const int idx = ( index0 + i ) % 4;
-
-                const auto corner = order[ idx ].corner;
-                const auto edge = order[ idx ].edge;
-
-                this->cornerOffsets[ corner ] = pos;
-                pos += metrics.corners[ corner ].stepCount + 1;
-
-                this->edgeOffsets[ ::edgeToIndex( edge ) ] = pos;
-                pos += gradientLineCount( colors.gradientAt( edge ) );
-            }
-
-            if ( index0 == 0 )
-            {
-                this->closingOffsets[ 0 ] = 0;
-                this->closingOffsets[ 1 ] = pos;
-                this->lineCount = pos + 1;
-            }
-            else
-            {
-                pos--;
-
-                this->closingOffsets[ 0 ] = pos;
-                this->closingOffsets[ 1 ] = 0;
-                this->lineCount = pos + 1;
-            }
-        }
-
-        int cornerOffsets[ 4 ];
-        int edgeOffsets[ 4 ];
-
-        int closingOffsets[2];
-        int lineCount;
-    };
+    inline int edgeToIndex( Qt::Edge edge )
+        { return qCountTrailingZeroBits( (quint8) edge ); }
 }
 
 namespace
@@ -267,6 +200,63 @@ namespace
         const QskVertex::ColorMap m_colorMap;
         const QskRoundedRect::Metrics::Corner* m_corners;
     };
+}
+
+namespace QskRoundedRect
+{
+    GeometryLayout::GeometryLayout(
+        const QskRoundedRect::Metrics& metrics, const QskBoxBorderColors& colors )
+    {
+        const struct
+        {
+            Qt::Corner corner;
+            Qt::Edge edge;
+        } order[4] =
+        {
+            // counter clockwise
+            { Qt::BottomRightCorner, Qt::RightEdge },
+            { Qt::TopRightCorner, Qt::TopEdge },
+            { Qt::TopLeftCorner, Qt::LeftEdge },
+            { Qt::BottomLeftCorner, Qt::BottomEdge }
+        };
+
+        /*
+            In case of horizontal filling the lines end at right edge,
+            while for vertical filling it is the bottom edge.
+         */
+        const int index0 = ( metrics.preferredOrientation == Qt::Horizontal ) ? 1 : 0;
+
+        int pos = index0;
+
+        for ( int i = 0; i < 4; i++ )
+        {
+            const int idx = ( index0 + i ) % 4;
+
+            const auto corner = order[ idx ].corner;
+            const auto edge = order[ idx ].edge;
+
+            this->cornerOffsets[ corner ] = pos;
+            pos += metrics.corners[ corner ].stepCount + 1;
+
+            this->edgeOffsets[ ::edgeToIndex( edge ) ] = pos;
+            pos += gradientLineCount( colors.gradientAt( edge ) );
+        }
+
+        if ( index0 == 0 )
+        {
+            this->closingOffsets[ 0 ] = 0;
+            this->closingOffsets[ 1 ] = pos;
+            this->lineCount = pos + 1;
+        }
+        else
+        {
+            pos--;
+
+            this->closingOffsets[ 0 ] = pos;
+            this->closingOffsets[ 1 ] = 0;
+            this->lineCount = pos + 1;
+        }
+    }
 }
 
 namespace QskRoundedRect
@@ -492,14 +482,36 @@ namespace QskRoundedRect
 
 QskRoundedRect::Stroker::Stroker( const Metrics& metrics )
     : m_metrics( metrics )
+    , m_geometryLayout( metrics, QskBoxBorderColors() )
+    , m_isColored( false )
+{
+}
+
+QskRoundedRect::Stroker::Stroker( const Metrics& metrics,
+        const QskBoxBorderColors& borderColors, const QskGradient& gradient )
+    : m_metrics( metrics )
+    , m_borderColors( borderColors )
+    , m_gradient( gradient )
+    , m_geometryLayout( metrics, m_borderColors )
+    , m_isColored( true )
 {
 }
 
 void QskRoundedRect::Stroker::setBorderGradientLines(
-    Qt::Edge edge, const QskBoxBorderColors& colors,
     QskVertex::ColoredLine* lines ) const
 {
-    const auto& gradient = colors.gradientAt( edge );
+    const auto off= m_geometryLayout.edgeOffsets;
+
+    setBorderGradientLines( Qt::TopEdge, lines + off[0] );
+    setBorderGradientLines( Qt::LeftEdge, lines + off[1] );
+    setBorderGradientLines( Qt::RightEdge, lines + off[2] );
+    setBorderGradientLines( Qt::BottomEdge, lines + off[3] );
+}
+
+void QskRoundedRect::Stroker::setBorderGradientLines(
+    Qt::Edge edge, QskVertex::ColoredLine* lines ) const
+{
+    const auto& gradient = m_borderColors.gradientAt( edge );
     if( gradient.stepCount() <= 1 )
     {
         // everything done as contour lines
@@ -574,13 +586,15 @@ void QskRoundedRect::Stroker::setBorderGradientLines(
 
 void QskRoundedRect::Stroker::createBorderLines( QskVertex::Line* lines ) const
 {
-    const BorderGeometryLayout bl( m_metrics, QskBoxBorderColors() );
+    Q_ASSERT( !m_isColored );
+
+    const auto& gl = m_geometryLayout;
     const auto cn = m_metrics.corners;
 
-    auto linesTL = lines + bl.cornerOffsets[ TopLeft ];
-    auto linesTR = lines + bl.cornerOffsets[ TopRight ] + cn[ TopRight ].stepCount;
-    auto linesBL = lines + bl.cornerOffsets[ BottomLeft ] + cn[ BottomLeft ].stepCount;
-    auto linesBR = lines + bl.cornerOffsets[ BottomRight ];
+    auto linesTL = lines + gl.cornerOffsets[ TopLeft ];
+    auto linesTR = lines + gl.cornerOffsets[ TopRight ] + cn[ TopRight ].stepCount;
+    auto linesBL = lines + gl.cornerOffsets[ BottomLeft ] + cn[ BottomLeft ].stepCount;
+    auto linesBR = lines + gl.cornerOffsets[ BottomRight ];
 
     CornerIterator it( m_metrics );
 
@@ -609,23 +623,23 @@ void QskRoundedRect::Stroker::createBorderLines( QskVertex::Line* lines ) const
             it.setBorderLine( BottomLeft, linesBR++);
     }
 
-    lines[ bl.closingOffsets[ 1 ] ] = lines[ bl.closingOffsets[ 0 ] ];
+    lines[ gl.closingOffsets[ 1 ] ] = lines[ gl.closingOffsets[ 0 ] ];
 }
 
-void QskRoundedRect::Stroker::createBorder(
-    QskVertex::ColoredLine* lines, const QskBoxBorderColors& colors ) const
+void QskRoundedRect::Stroker::createBorder( QskVertex::ColoredLine* lines ) const
 {
-    Q_ASSERT( lines != nullptr );
+    Q_ASSERT( m_isColored );
+    Q_ASSERT( lines );
 
-    const BorderGeometryLayout bl( m_metrics, colors );
+    const auto& gl = m_geometryLayout;
     const auto cn = m_metrics.corners;
 
-    auto linesTL = lines + bl.cornerOffsets[ TopLeft ];
-    auto linesTR = lines + bl.cornerOffsets[ TopRight ] + cn[ TopRight ].stepCount;
-    auto linesBL = lines + bl.cornerOffsets[ BottomLeft ] + cn[ BottomLeft ].stepCount;
-    auto linesBR = lines + bl.cornerOffsets[ BottomRight ];
+    auto linesTL = lines + gl.cornerOffsets[ TopLeft ];
+    auto linesTR = lines + gl.cornerOffsets[ TopRight ] + cn[ TopRight ].stepCount;
+    auto linesBL = lines + gl.cornerOffsets[ BottomLeft ] + cn[ BottomLeft ].stepCount;
+    auto linesBR = lines + gl.cornerOffsets[ BottomRight ];
 
-    CornerIteratorColor it( m_metrics, colors );
+    CornerIteratorColor it( m_metrics, m_borderColors );
 
     if ( m_metrics.isRadiusRegular && !m_metrics.isTotallyCropped )
     {
@@ -652,13 +666,8 @@ void QskRoundedRect::Stroker::createBorder(
             it.setBorderLine( BottomRight, linesBR++ );
     }
 
-    for ( int i = 0; i < 4; i++ )
-    {
-        setBorderGradientLines( ::indexToEdge( i ), colors,
-            lines + bl.edgeOffsets[ i ] );
-    }
-
-    lines[ bl.closingOffsets[ 1 ] ] = lines[ bl.closingOffsets[ 0 ] ];
+    setBorderGradientLines( lines );
+    lines[ gl.closingOffsets[ 1 ] ] = lines[ gl.closingOffsets[ 0 ] ];
 }
 
 template< class Line, class FillMap >
@@ -771,27 +780,29 @@ static inline void createFill(
 
 void QskRoundedRect::Stroker::createFillLines( QskVertex::Line* lines ) const
 {
+    Q_ASSERT( !m_isColored );
     Q_ASSERT( lines );
 
     const LineMap map( m_metrics );
     ::createFill( m_metrics, map, lines );
 }
 
-void QskRoundedRect::Stroker::createFill(
-    QskVertex::ColoredLine* lines, const QskGradient& gradient ) const
+void QskRoundedRect::Stroker::createFill( QskVertex::ColoredLine* lines ) const
 {
-    Q_ASSERT( lines && ( gradient.isValid() && gradient.stepCount() <= 1 ) );
+    Q_ASSERT( m_isColored );
+    Q_ASSERT( lines );
+    Q_ASSERT( lines && ( m_gradient.isValid() && m_gradient.stepCount() <= 1 ) );
 
-    const FillMap map( m_metrics, gradient );
+    const FillMap map( m_metrics, m_gradient );
     ::createFill( m_metrics, map, lines );
 }
 
-void QskRoundedRect::Stroker::createBox(
-    QskVertex::ColoredLine* borderLines, const QskBoxBorderColors& borderColors,
-    QskVertex::ColoredLine* fillLines, const QskGradient& gradient ) const
+void QskRoundedRect::Stroker::createBox( QskVertex::ColoredLine* borderLines, 
+    QskVertex::ColoredLine* fillLines ) const
 {
+    Q_ASSERT( m_isColored );
     Q_ASSERT( borderLines || fillLines );
-    Q_ASSERT( fillLines == nullptr || ( gradient.isValid() && gradient.stepCount() <= 1 ) );
+    Q_ASSERT( fillLines == nullptr || ( m_gradient.isValid() && m_gradient.stepCount() <= 1 ) );
 
     if ( m_metrics.isRadiusRegular && !m_metrics.isTotallyCropped )
     {
@@ -802,26 +813,25 @@ void QskRoundedRect::Stroker::createBox(
                 As this is the by far most common situation we do this
                 micro optimization.
              */
-            createRegularBox( borderLines, borderColors, fillLines, gradient );
+            createRegularBox( borderLines, fillLines );
             return;
         }
     }
 
     if ( borderLines )
-        createBorder( borderLines, borderColors );
+        createBorder( borderLines );
 
     if ( fillLines )
-        createFill( fillLines, gradient );
+        createFill( fillLines );
 }
 
 void QskRoundedRect::Stroker::createRegularBox(
-    QskVertex::ColoredLine* borderLines, const QskBoxBorderColors& borderColors,
-    QskVertex::ColoredLine* fillLines, const QskGradient& gradient ) const
+    QskVertex::ColoredLine* borderLines, QskVertex::ColoredLine* fillLines ) const
 {
-    const BorderGeometryLayout bl( m_metrics, borderColors );
+    const auto& gl = m_geometryLayout;
 
-    const FillMap fillMap( m_metrics, gradient );
-    CornerIteratorColor it( m_metrics, borderColors );
+    const FillMap fillMap( m_metrics, m_gradient );
+    CornerIteratorColor it( m_metrics, m_borderColors );
 
     /*
         It would be possible to run over [0, 0.5 * M_PI_2]
@@ -830,10 +840,10 @@ void QskRoundedRect::Stroker::createRegularBox(
 
     const auto stepCount = m_metrics.corners[0].stepCount;
 
-    auto linesTL = borderLines + bl.cornerOffsets[ TopLeft ];
-    auto linesTR = borderLines + bl.cornerOffsets[ TopRight ] + stepCount;
-    auto linesBL = borderLines + bl.cornerOffsets[ BottomLeft ] + stepCount;
-    auto linesBR = borderLines + bl.cornerOffsets[ BottomRight ];
+    auto linesTL = borderLines + gl.cornerOffsets[ TopLeft ];
+    auto linesTR = borderLines + gl.cornerOffsets[ TopRight ] + stepCount;
+    auto linesBL = borderLines + gl.cornerOffsets[ BottomLeft ] + stepCount;
+    auto linesBR = borderLines + gl.cornerOffsets[ BottomRight ];
 
     if ( m_metrics.preferredOrientation == Qt::Horizontal )
     {
@@ -870,14 +880,8 @@ void QskRoundedRect::Stroker::createRegularBox(
 
     if ( borderLines )
     {
-        for ( int i = 0; i < 4; i++ )
-        {
-            setBorderGradientLines( ::indexToEdge( i ), borderColors,
-                borderLines + bl.edgeOffsets[ i ] );
-        }
-
-        borderLines[ bl.closingOffsets[ 1 ] ]
-            = borderLines[ bl.closingOffsets[ 0 ] ];
+        setBorderGradientLines( borderLines );
+        borderLines[ gl.closingOffsets[ 1 ] ] = borderLines[ gl.closingOffsets[ 0 ] ];
     }
 }
 
@@ -890,19 +894,14 @@ int QskRoundedRect::Stroker::borderLineCount() const
         4: Number of lines is always one more than the number of steps.
         1: extra line at the end to close the border path
      */
-    return m_metrics.cornerStepCount() + 4 + 1;
-}
+    int n = m_metrics.cornerStepCount() + 4 + 1;
 
-int QskRoundedRect::Stroker::borderLineCount( const QskBoxBorderColors& colors ) const
-{
-    int n = borderLineCount();
-
-    if ( n > 0 )
+    if ( m_isColored )
     {
-        n += gradientLineCount( colors.left() );
-        n += gradientLineCount( colors.top() );
-        n += gradientLineCount( colors.right() );
-        n += gradientLineCount( colors.bottom() );
+        n += gradientLineCount( m_borderColors.left() );
+        n += gradientLineCount( m_borderColors.top() );
+        n += gradientLineCount( m_borderColors.right() );
+        n += gradientLineCount( m_borderColors.bottom() );
     }
 
     return n;
@@ -910,6 +909,9 @@ int QskRoundedRect::Stroker::borderLineCount( const QskBoxBorderColors& colors )
 
 int QskRoundedRect::Stroker::fillLineCount() const
 {
+    if ( m_isColored && !m_gradient.isVisible() )
+        return 0;
+
     if ( m_metrics.isTotallyCropped )
         return 2;
 
@@ -934,12 +936,4 @@ int QskRoundedRect::Stroker::fillLineCount() const
     }
 
     return n;
-}
-
-int QskRoundedRect::Stroker::fillLineCount( const QskGradient& gradient ) const
-{
-    if ( !gradient.isVisible() )
-        return 0;
-
-    return fillLineCount();
 }
