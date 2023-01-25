@@ -101,8 +101,8 @@ namespace QskRoundedRect
         Stroker( const Metrics& );
         Stroker( const Metrics&, const QskBoxBorderColors&, const QskGradient& );
 
-        int fillLineCount() const;
-        int borderLineCount() const;
+        int fillCount() const;
+        int borderCount() const;
 
         /*
             QskVertex::Line ( = QSGGeometry::Point2D )
@@ -115,8 +115,8 @@ namespace QskRoundedRect
                   ( = QskGradientMatrial )
          */
 
-        void createBorderLines( QskVertex::Line* ) const;
-        void createFillLines( QskVertex::Line* ) const;
+        void setBorderLines( QskVertex::Line* ) const;
+        void setFillLines( QskVertex::Line* ) const;
 
         /*
             QskVertex::ColoredLine ( = QSGGeometry::ColoredPoint2D )
@@ -126,9 +126,10 @@ namespace QskRoundedRect
             up in better scene graph batching
          */
 
-        void createBox( QskVertex::ColoredLine*, QskVertex::ColoredLine* ) const;
-        void createFill( QskVertex::ColoredLine* ) const;
-        void createBorder( QskVertex::ColoredLine* ) const;
+        void setBorderLines( QskVertex::ColoredLine* ) const;
+        void setFillLines( QskVertex::ColoredLine* ) const;
+
+        void setBoxLines( QskVertex::ColoredLine*, QskVertex::ColoredLine* ) const;
 
       private:
         void setBorderGradientLines( QskVertex::ColoredLine* ) const;

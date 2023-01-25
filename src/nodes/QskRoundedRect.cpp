@@ -584,7 +584,7 @@ void QskRoundedRect::Stroker::setBorderGradientLines(
         setGradientLineAt( orientation, x1, y1, x2, y2, stops.first(), line++ );
 }
 
-void QskRoundedRect::Stroker::createBorderLines( QskVertex::Line* lines ) const
+void QskRoundedRect::Stroker::setBorderLines( QskVertex::Line* lines ) const
 {
     Q_ASSERT( !m_isColored );
 
@@ -626,7 +626,7 @@ void QskRoundedRect::Stroker::createBorderLines( QskVertex::Line* lines ) const
     lines[ gl.closingOffsets[ 1 ] ] = lines[ gl.closingOffsets[ 0 ] ];
 }
 
-void QskRoundedRect::Stroker::createBorder( QskVertex::ColoredLine* lines ) const
+void QskRoundedRect::Stroker::setBorderLines( QskVertex::ColoredLine* lines ) const
 {
     Q_ASSERT( m_isColored );
     Q_ASSERT( lines );
@@ -778,7 +778,7 @@ static inline void createFill(
     }
 }
 
-void QskRoundedRect::Stroker::createFillLines( QskVertex::Line* lines ) const
+void QskRoundedRect::Stroker::setFillLines( QskVertex::Line* lines ) const
 {
     Q_ASSERT( !m_isColored );
     Q_ASSERT( lines );
@@ -787,7 +787,7 @@ void QskRoundedRect::Stroker::createFillLines( QskVertex::Line* lines ) const
     ::createFill( m_metrics, map, lines );
 }
 
-void QskRoundedRect::Stroker::createFill( QskVertex::ColoredLine* lines ) const
+void QskRoundedRect::Stroker::setFillLines( QskVertex::ColoredLine* lines ) const
 {
     Q_ASSERT( m_isColored );
     Q_ASSERT( lines );
@@ -797,7 +797,7 @@ void QskRoundedRect::Stroker::createFill( QskVertex::ColoredLine* lines ) const
     ::createFill( m_metrics, map, lines );
 }
 
-void QskRoundedRect::Stroker::createBox( QskVertex::ColoredLine* borderLines, 
+void QskRoundedRect::Stroker::setBoxLines( QskVertex::ColoredLine* borderLines, 
     QskVertex::ColoredLine* fillLines ) const
 {
     Q_ASSERT( m_isColored );
@@ -819,10 +819,10 @@ void QskRoundedRect::Stroker::createBox( QskVertex::ColoredLine* borderLines,
     }
 
     if ( borderLines )
-        createBorder( borderLines );
+        setBorderLines( borderLines );
 
     if ( fillLines )
-        createFill( fillLines );
+        setFillLines( fillLines );
 }
 
 void QskRoundedRect::Stroker::createRegularBox(
@@ -885,9 +885,9 @@ void QskRoundedRect::Stroker::createRegularBox(
     }
 }
 
-int QskRoundedRect::Stroker::borderLineCount() const
+int QskRoundedRect::Stroker::borderCount() const
 {
-    if ( m_metrics.innerQuad == m_metrics.outerQuad )
+    if ( m_metrics.innerQuad == m_metrics.outerQuad || !m_borderColors.isVisible() )
         return 0;
 
     /*
@@ -907,7 +907,7 @@ int QskRoundedRect::Stroker::borderLineCount() const
     return n;
 }
 
-int QskRoundedRect::Stroker::fillLineCount() const
+int QskRoundedRect::Stroker::fillCount() const
 {
     if ( m_isColored && !m_gradient.isVisible() )
         return 0;
