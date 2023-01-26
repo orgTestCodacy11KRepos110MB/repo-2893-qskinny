@@ -68,6 +68,9 @@ class QSK_EXPORT QskLinearDirection
     constexpr qreal y2() const noexcept;
     void setY2( qreal ) noexcept;
 
+    constexpr qreal dx() const noexcept;
+    constexpr qreal dy() const noexcept;
+
     /*
         In direction of the gradient vector, where 0.0 corresponds to
         points on the perpendicular at the start and 1.0 to points on
@@ -217,6 +220,16 @@ inline constexpr qreal QskLinearDirection::x2() const noexcept
 inline constexpr qreal QskLinearDirection::y2() const noexcept
 {
     return m_y2;
+}
+
+inline constexpr qreal QskLinearDirection::dx() const noexcept
+{
+    return m_x2 - m_x1;
+}
+
+inline constexpr qreal QskLinearDirection::dy() const noexcept
+{
+    return m_y2 - m_y1;
 }
 
 inline constexpr QLineF QskLinearDirection::vector() const noexcept
