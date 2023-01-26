@@ -133,14 +133,14 @@ static inline bool qskIntersectsBottom(
 static inline bool qskIntersectsLeft(
     qreal vx, qreal vy, qreal m, const QRectF& rect )
 {
-    const qreal cy = vy - ( vx - rect.left() ) * m;
+    const auto cy = vy - ( vx - rect.left() ) * m;
     return ( cy > rect.top() && cy < rect.bottom() );
 }
 
 static inline bool qskIntersectsRight(
     qreal vx, qreal vy, qreal m, const QRectF& rect )
 {
-    const qreal cy = vy - ( vx - rect.right() ) * m;
+    const auto cy = vy - ( vx - rect.right() ) * m;
     return ( cy > rect.top() && cy < rect.bottom() );
 }
 
@@ -151,7 +151,6 @@ bool QskLinearDirection::contains( const QRectF& rect ) const
         return ( m_x1 <= rect.left() && m_x2 >= rect.right() )
             || ( m_x1 >= rect.right() && m_x2 <= rect.left() );
     }
-
 
     if ( m_x1 == m_x2 )
     {
