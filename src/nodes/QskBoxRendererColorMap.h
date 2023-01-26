@@ -96,88 +96,65 @@ namespace QskVertex
         const QskVertex::Color m_color2;
     };
 
-    class ColorIterator
+    class GradientIterator
     {
       public:
-        static inline bool advance()
+        inline GradientIterator( const Color color )
+            : m_color1( color )
+            , m_color2( color )
         {
-            return false;
         }
 
-        inline qreal value() const
+        inline GradientIterator( const Color& color1, const Color& color2 )
+            : m_color1( color1 )
+            , m_color2( color2 )
         {
-            assert( false );
-            return 0.0;
+        }
+
+        inline GradientIterator( const QskGradientStops& stops )
+            : m_stops( stops )
+            , m_color1( stops.first().rgb() )
+            , m_color2( m_color1 )
+            , m_pos1( stops.first().position() )
+            , m_pos2( m_pos1 )
+            , m_index( 0 )
+        {
+        }
+
+        inline qreal position() const
+        {
+            return m_pos2;
         }
 
         inline Color color() const
         {
-            assert( false );
-            return Color();
+            return m_color2;
         }
 
-        static inline bool isDone()
+        inline Color colorAt( qreal pos ) const
         {
-            return true;
-        }
-    };
-
-    class SimpleColorIterator : public ColorIterator
-    {
-      public:
-        inline SimpleColorIterator( const QColor& color )
-            : m_color1( color )
-            , m_color2( color )
-            , m_isMonochrome( true )
-        {
-        }
-
-        inline SimpleColorIterator( const QColor& color1, const QColor& color2 )
-            : m_color1( color1 )
-            , m_color2( color2 )
-            , m_isMonochrome( false )
-        {
-        }
-
-        inline Color colorAt( qreal value ) const
-        {
-            if ( m_isMonochrome )
+            if ( m_color1 == m_color2 )
                 return m_color1;
 
-            return m_color1.interpolatedTo( m_color2, value );
-        }
+            if ( m_index < 0 )
+            {
+                return m_color1.interpolatedTo( m_color2, pos );
+            }
+            else
+            {
+                if ( m_pos2 == m_pos1 )
+                    return m_color1;
 
-      private:
-        const Color m_color1, m_color2;
-        const bool m_isMonochrome;
-    };
-
-    class GradientColorIterator : public ColorIterator
-    {
-      public:
-        inline GradientColorIterator( const QskGradientStops& stops )
-            : m_stops( stops )
-            , m_index( 0 )
-        {
-            const auto& s = stops[0];
-
-            m_pos1 = m_pos2 = s.position();
-            m_color1 = m_color2 = s.rgb();
-        }
-
-        inline qreal value() const { return m_pos2; }
-        inline Color color() const { return m_color2; }
-
-        inline Color colorAt( qreal value ) const
-        {
-            const auto t = m_pos2 - m_pos1;
-
-            const auto ratio = ( t == 0.0 ) ? 0.0 : ( value - m_pos1 ) / t;
-            return m_color1.interpolatedTo( m_color2, ratio );
+                const auto r = ( pos - m_pos1 ) / ( m_pos2 - m_pos1 );
+                return m_color1.interpolatedTo( m_color2, r );
+            }
         }
 
         inline bool advance()
         {
+            if ( m_index < 0 )
+                return true;
+
             m_pos1 = m_pos2;
             m_color1 = m_color2;
 
@@ -192,15 +169,23 @@ namespace QskVertex
             return !isDone();
         }
 
-        inline bool isDone() const { return m_index >= m_stops.size(); }
+        inline bool isDone() const
+        {
+            if ( m_index < 0 )
+                return true;
+
+            return m_index >= m_stops.size();
+        }
 
       private:
         const QskGradientStops m_stops;
 
-        int m_index;
-
         Color m_color1, m_color2;
-        qreal m_pos1, m_pos2;
+
+        qreal m_pos1 = 0.0;
+        qreal m_pos2 = 1.0;
+
+        int m_index = -1;
     };
 
     inline ColoredLine* fillUp( ColoredLine* lines, const ColoredLine& l, int count )
@@ -211,9 +196,9 @@ namespace QskVertex
         return lines;
     }
 
-    template< class ContourIterator, class ColorIterator >
+    template< class ContourIterator, class GradientIterator >
     ColoredLine* fillOrdered( ContourIterator& contourIt,
-        ColorIterator& colorIt, int lineCount, ColoredLine* lines )
+        GradientIterator& gradientIt, int lineCount, ColoredLine* lines )
     {
         /*
              When the the vector exceeds [ 0.0, 1.0 ] we might have
@@ -225,29 +210,29 @@ namespace QskVertex
              adding duplicates of the last line.
          */
 
-        const auto value1 = contourIt.valueBegin();
-        const auto value2 = contourIt.valueEnd();
+        const auto pos1 = contourIt.valueBegin();
+        const auto pos2 = contourIt.valueEnd();
 
         ColoredLine* l = lines;
 
         do
         {
-            while ( !colorIt.isDone() && ( colorIt.value() < contourIt.value() ) )
+            while ( !gradientIt.isDone() && ( gradientIt.position() < contourIt.value() ) )
             {
-                const auto value = colorIt.value();
+                const auto pos = gradientIt.position();
 
                 /*
                     When having a gradient vector beyond [0,1]
                     we will have gradient lines outside of the contour
                  */
 
-                if ( value > value1 && value < value2 )
-                    contourIt.setGradientLine( value, colorIt.color(), l++ );
+                if ( pos > pos1 && pos < pos2 )
+                    contourIt.setGradientLine( pos, gradientIt.color(), l++ );
 
-                colorIt.advance();
+                gradientIt.advance();
             }
 
-            const auto color = colorIt.colorAt( contourIt.value() );
+            const auto color = gradientIt.colorAt( contourIt.value() );
             contourIt.setContourLine( color, l++ );
 
         } while ( contourIt.advance() );
@@ -283,13 +268,13 @@ namespace QskVertex
              */
             if ( contourIt.valueBegin() >= 0.0 && contourIt.valueEnd() <= 1.0 )
             {
-                SimpleColorIterator colorIt( gradient.rgbStart(), gradient.rgbEnd() );
-                return fillOrdered( contourIt, colorIt, lineCount, lines );
+                GradientIterator gradientIt( gradient.rgbStart(), gradient.rgbEnd() );
+                return fillOrdered( contourIt, gradientIt, lineCount, lines );
             }
         }
 
-        GradientColorIterator colorIt( gradient.stops() );
-        return fillOrdered( contourIt, colorIt, lineCount, lines );
+        GradientIterator gradientIt( gradient.stops() );
+        return fillOrdered( contourIt, gradientIt, lineCount, lines );
     }
 }
 
