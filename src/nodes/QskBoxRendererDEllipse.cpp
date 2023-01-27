@@ -611,21 +611,33 @@ void QskRoundedRectRenderer::renderDiagonalFill( const QskRoundedRect::Metrics& 
     const ValueCurve curve( metrics );
 
     DRectellipseIterator it( metrics, curve );
-    auto line = QskVertex::fillBox( it, gradient, -1, lines );
+    GradientIterator gradientIt( gradient.stops() );
 
-    /*
-        There are a couple of reasons, why less points have been rendered
-        than expected: f.e the positions of the gradient lines are
-        calculated from a diagonal, where the start/endpoints
-        might be a little outside of the contour.
-
-        As effects like this one are hard to precalculate we simply
-        insert dummy lines to match the allocated memory.
-     */
-
-    while ( line - lines < fillLineCount )
+    const auto pos1 = it.valueBegin();
+    const auto pos2 = it.valueEnd();
+    
+    ColoredLine* l = lines;
+    
+    do
     {
-        line[ 0 ] = line[ -1 ];
-        line++;
+        while ( !gradientIt.isDone() && ( gradientIt.position() < it.value() ) )
+        {
+            const auto pos = gradientIt.position();
+            
+            if ( pos > pos1 && pos < pos2 )
+                it.setGradientLine( pos, gradientIt.color(), l++ );
+                
+            gradientIt.advance();
+        }   
+        
+        const auto color = gradientIt.colorAt( it.value() );
+        it.setContourLine( color, l++ );
+        
+    } while ( it.advance() );
+
+    while ( l - lines < fillLineCount )
+    {
+        l[ 0 ] = l[ -1 ];
+        l++;
     }
 }
