@@ -713,7 +713,6 @@ static inline void createFill(
     }
     else if ( m_metrics.stepSizeSymmetries )
     {
-
         auto line = lines;
 
         if ( isHorizontal )
