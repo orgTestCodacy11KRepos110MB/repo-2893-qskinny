@@ -25,8 +25,8 @@ namespace
       public:
         Filler( const QskGradient& gradient )
             : m_dir( gradient.linearDirection() )
-            , m_gradientIterator( gradient.stops() )
             , m_isVertical( m_dir.isVertical() )
+            , m_gradientIterator( gradient.stops() )
         {
         }
 
@@ -54,25 +54,20 @@ namespace
         {
             using namespace QskRoundedRect;
 
-            m_pos0 = metrics.innerQuad.left;
-            m_size = metrics.innerQuad.width;
-
-            m_t = m_dir.x1();
-            m_dt = m_dir.dx();
-
-            const auto cn = metrics.corners;
-
-            const auto& c1 = cn[ TopLeft ];
-            const auto& c2 = cn[ BottomLeft ];
-            const auto& c3 = cn[ TopRight ];
-            const auto& c4 = cn[ BottomRight ];
+            const auto& c1 = metrics.corners[ TopLeft ];
+            const auto& c2 = metrics.corners[ BottomLeft ];
+            const auto& c3 = metrics.corners[ TopRight ];
+            const auto& c4 = metrics.corners[ BottomRight ];
 
             const auto& cx1 = ( c1.stepCount > c2.stepCount ) ? c1 : c2;
             const auto& cx2 = ( c3.stepCount > c4.stepCount ) ? c3 : c4;
 
+            m_t0 = m_dir.x1();
+            m_dt = m_dir.dx();
+
             m_v1.from = c1.yInner( 1.0 );
             m_v1.to = c2.yInner( 1.0 );
-            m_v1.pos = m_pos0;
+            m_v1.pos = metrics.innerQuad.left;
 
             m_v2 = m_v1;
 
@@ -80,28 +75,21 @@ namespace
 
             for ( ArcIterator it( cx1.stepCount, true ); !it.isDone(); ++it )
             {
-                l = setGradientLines( l );
                 setContourLine( l++ );
 
                 m_v1 = m_v2;
                 m_v2.from = c1.yInner( it.sin() );
                 m_v2.to = c2.yInner( it.sin() );
                 m_v2.pos = cx1.xInner( it.cos() );
+
+                l = setGradientLines( l );
             }
 
+            const auto pos = cx2.xInner( 0.0 );
+            if ( m_v2.pos < pos )
             {
-                const qreal pos1 = cx1.yInner( 0.0 );
-                const qreal pos2 = cx2.xInner( 0.0 );
-
-                if ( pos1 < pos2 )
-                {
-                    l = setGradientLines( l );
-
-                    m_v1 = m_v2;
-                    m_v2.from = c3.yInner( 1.0 );
-                    m_v2.to = c4.yInner( 1.0 );
-                    m_v2.pos = pos2;
-                }
+                m_v1 = m_v2;
+                m_v2.pos = pos;
             }
 
             for ( ArcIterator it( cx2.stepCount, false ); !it.isDone(); ++it )
@@ -110,7 +98,6 @@ namespace
                 setContourLine( l++ );
 
                 m_v1 = m_v2;
-
                 m_v2.from = c3.yInner( it.sin() );
                 m_v2.to = c4.yInner( it.sin() );
                 m_v2.pos = cx2.xInner( it.cos() );
@@ -123,25 +110,20 @@ namespace
         {
             using namespace QskRoundedRect;
 
-            m_pos0 = metrics.innerQuad.top;
-            m_size = metrics.innerQuad.height;
-
-            m_t = m_dir.y1();
-            m_dt = m_dir.dy();
-
-            const auto cn = metrics.corners;
-
-            const auto& c1 = cn[ TopLeft ];
-            const auto& c2 = cn[ TopRight ];
-            const auto& c3 = cn[ BottomLeft ];
-            const auto& c4 = cn[ BottomRight ];
+            const auto& c1 = metrics.corners[ TopLeft ];
+            const auto& c2 = metrics.corners[ TopRight ];
+            const auto& c3 = metrics.corners[ BottomLeft ];
+            const auto& c4 = metrics.corners[ BottomRight ];
 
             const auto& cy1 = ( c1.stepCount > c2.stepCount ) ? c1 : c2;
             const auto& cy2 = ( c3.stepCount > c4.stepCount ) ? c3 : c4;
 
+            m_t0 = m_dir.y1();
+            m_dt = m_dir.dy();
+
             m_v1.from = c1.xInner( 1.0 );
             m_v1.to = c2.xInner( 1.0 );
-            m_v1.pos = m_pos0;
+            m_v1.pos = metrics.innerQuad.top;
 
             m_v2 = m_v1;
 
@@ -149,28 +131,21 @@ namespace
 
             for ( ArcIterator it( cy1.stepCount, false ); !it.isDone(); ++it )
             {
-                l = setGradientLines( l );
                 setContourLine( l++ );
 
                 m_v1 = m_v2;
                 m_v2.from = c1.xInner( it.cos() );
                 m_v2.to = c2.xInner( it.cos() );
                 m_v2.pos = cy1.yInner( it.sin() );
+
+                l = setGradientLines( l );
             }
 
+            const auto pos = cy2.yInner( 0.0 );
+            if ( m_v2.pos < pos )
             {
-                const qreal pos1 = cy1.yInner( 0.0 );
-                const qreal pos2 = cy2.yInner( 0.0 );
-
-                if ( pos1 < pos2 )
-                {
-                    l = setGradientLines( l );
-
-                    m_v1 = m_v2;
-                    m_v2.from = c3.xInner( 1.0 );
-                    m_v2.to = c4.xInner( 1.0 );
-                    m_v2.pos = pos2;
-                }
+                m_v1 = m_v2;
+                m_v2.pos = pos;
             }
 
             for ( ArcIterator it( cy2.stepCount, true ); !it.isDone(); ++it )
@@ -179,7 +154,6 @@ namespace
                 setContourLine( l++ );
 
                 m_v1 = m_v2;
-
                 m_v2.from = c3.xInner( it.cos() );
                 m_v2.to = c4.xInner( it.cos() );
                 m_v2.pos = cy2.yInner( it.sin() );
@@ -190,27 +164,23 @@ namespace
 
         inline ColoredLine* setGradientLines( ColoredLine* lines )
         {
-            const auto pos1 = ( m_pos0 - m_t ) / m_dt;
-            const auto pos2 = ( m_pos0 + m_size - m_t ) / m_dt;
-
-            const auto value = ( m_v2.pos - m_t ) / m_dt;
-
-            while ( !m_gradientIterator.isDone()
-                && ( m_gradientIterator.position() < value ) )
+            while ( !m_gradientIterator.isDone() )
             {
-                const auto pos = m_gradientIterator.position();
+                const auto pos = m_t0 + m_gradientIterator.position() * m_dt;
 
-                if ( pos > pos1 && pos < pos2 )
+                if ( pos >= m_v2.pos )
+                    return lines;
+
+                if ( pos > m_v1.pos  )
                 {
                     const auto color = m_gradientIterator.color();
-                    const auto t = m_t + pos * m_dt;
 
-                    const qreal f = ( t - m_v1.pos ) / ( m_v2.pos - m_v1.pos );
+                    const qreal f = ( pos - m_v1.pos ) / ( m_v2.pos - m_v1.pos );
 
                     const qreal v1 = m_v1.from + f * ( m_v2.from - m_v1.from );
                     const qreal v2 = m_v1.to + f * ( m_v2.to - m_v1.to );
 
-                    setLine( v1, v2, t, color, lines++ );
+                    setLine( v1, v2, pos, color, lines++ );
                 }
 
                 m_gradientIterator.advance();
@@ -221,14 +191,11 @@ namespace
 
         inline void setContourLine( ColoredLine* line )
         {
-            const auto value = ( m_v2.pos - m_t ) / m_dt;
-            const auto color = m_gradientIterator.colorAt( value );
-
+            const auto color = m_gradientIterator.colorAt( ( m_v2.pos - m_t0 ) / m_dt );
             setLine( m_v2.from, m_v2.to, m_v2.pos, color, line );
         }
 
       private:
-
         inline void setLine( qreal from, qreal to, qreal pos,
             Color color, ColoredLine* line )
         {
@@ -239,6 +206,8 @@ namespace
         }
 
         const QskLinearDirection m_dir;
+        const bool m_isVertical;
+        qreal m_t0, m_dt;
 
         GradientIterator m_gradientIterator;
 
@@ -251,11 +220,6 @@ namespace
             qreal from, to; // opposite to the direction of the gradient
             qreal pos;      // in direction of the gradient
         } m_v1, m_v2;
-
-        qreal m_pos0, m_size;
-        qreal m_t, m_dt; // to translate into gradient values
-
-        const bool m_isVertical;
     };
 }
 
