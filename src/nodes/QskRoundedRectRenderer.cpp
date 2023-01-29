@@ -20,146 +20,127 @@ using namespace QskVertex;
 
 namespace
 {
+    using namespace QskRoundedRect;
+
+    class Value
+    {
+      public:
+        qreal from, to; // opposite to the direction of the gradient
+        qreal pos;      // in direction of the gradient
+    };
+
+    class ContourIterator
+    {
+      public:
+        inline ContourIterator( const Metrics::Corner& c1,
+                const Metrics::Corner& c2, bool isVertical, bool isOpen )
+            : m_isVertical( isVertical )
+            , m_c1( c1 )
+            , m_c2( c2 )
+            , m_c3( ( c1.stepCount > c2.stepCount ) ? c1 : c2 )
+        {
+            m_it.reset( m_c3.stepCount, isVertical != isOpen );
+        }
+
+        inline void operator++() { ++m_it; }
+        inline bool isDone() const { return m_it.isDone(); }
+
+        inline Value value() const
+        {
+            const auto cos = m_it.cos();
+            const auto sin = m_it.sin();
+
+            if ( m_isVertical )
+                return { m_c1.xInner( cos ), m_c2.xInner( cos ), m_c3.yInner( sin ) };
+            else
+                return { m_c1.yInner( sin ), m_c2.yInner( sin ), m_c3.xInner( cos ) };
+        }
+
+      private:
+        const bool m_isVertical;
+
+        const Metrics::Corner& m_c1;
+        const Metrics::Corner& m_c2;
+        const Metrics::Corner& m_c3;
+
+        ArcIterator m_it;
+    };
+
     class Filler
     {
       public:
-        Filler( const QskGradient& gradient )
-            : m_dir( gradient.linearDirection() )
-            , m_isVertical( m_dir.isVertical() )
-            , m_gradientIterator( gradient.stops() )
-        {
-        }
-
         void fillBox( const QskRoundedRect::Metrics& metrics,
-            int lineCount, ColoredLine* lines )
+            const QskGradient& gradient, int lineCount, ColoredLine* lines )
         {
-            ColoredLine* l;
+            const int* corners;
+
+            const auto dir = gradient.linearDirection();
+
+            m_isVertical = dir.isVertical();
 
             if ( m_isVertical )
-                l = fillBoxV( metrics, lines );
+            {
+                using namespace QskRoundedRect;
+                static const int c[] = { TopLeft, TopRight, BottomLeft, BottomRight };
+                corners = c;
+
+                m_t0 = dir.y1();
+                m_dt = dir.dy();
+            }
             else
-                l = fillBoxH( metrics, lines );
+            {
+                using namespace QskRoundedRect;
+                static const int c[] = { TopLeft, BottomLeft, TopRight, BottomRight };
+                corners = c;
+
+                m_t0 = dir.x1();
+                m_dt = dir.dx();
+            }
+
+            m_gradientIterator.reset( gradient.stops() );
+
+            ColoredLine* l = lines;
+
+            const auto cn = metrics.corners;
+            ContourIterator it1( cn[ corners[0] ], cn[ corners[1] ], m_isVertical, true );
+            ContourIterator it2( cn[ corners[2] ], cn[ corners[3] ], m_isVertical, false );
+
+            m_v2 = it1.value();
+
+            for ( ; !it1.isDone(); ++it1 )
+            {
+                m_v1 = m_v2;
+                m_v2 = it1.value();
+
+                setContourLine( l++ );
+                l = setGradientLines( l );
+            }
+
+            const auto pos = it2.value().pos;
+            if ( m_v2.pos < pos )
+            {
+                m_v1 = m_v2;
+                m_v2.pos = pos;
+            }
+
+            for ( ; !it2.isDone(); ++it2 )
+            {
+                l = setGradientLines( l );
+                setContourLine( l++ );
+
+                m_v1 = m_v2;
+                m_v2 = it2.value();
+            }
 
             if ( lineCount >= 0 )
             {
                 const auto count = lineCount - ( l - lines );
+
                 Q_ASSERT( count >= 0 );
 
                 if ( count > 0 )
                     l = QskVertex::fillUp( l, *( l - 1 ), count );
             }
-        }
-
-        ColoredLine* fillBoxH( const QskRoundedRect::Metrics& metrics, ColoredLine* lines )
-        {
-            using namespace QskRoundedRect;
-
-            const auto& c1 = metrics.corners[ TopLeft ];
-            const auto& c2 = metrics.corners[ BottomLeft ];
-            const auto& c3 = metrics.corners[ TopRight ];
-            const auto& c4 = metrics.corners[ BottomRight ];
-
-            const auto& cx1 = ( c1.stepCount > c2.stepCount ) ? c1 : c2;
-            const auto& cx2 = ( c3.stepCount > c4.stepCount ) ? c3 : c4;
-
-            m_t0 = m_dir.x1();
-            m_dt = m_dir.dx();
-
-            m_v1.from = c1.yInner( 1.0 );
-            m_v1.to = c2.yInner( 1.0 );
-            m_v1.pos = metrics.innerQuad.left;
-
-            m_v2 = m_v1;
-
-            ColoredLine* l = lines;
-
-            for ( ArcIterator it( cx1.stepCount, true ); !it.isDone(); ++it )
-            {
-                setContourLine( l++ );
-
-                m_v1 = m_v2;
-                m_v2.from = c1.yInner( it.sin() );
-                m_v2.to = c2.yInner( it.sin() );
-                m_v2.pos = cx1.xInner( it.cos() );
-
-                l = setGradientLines( l );
-            }
-
-            const auto pos = cx2.xInner( 0.0 );
-            if ( m_v2.pos < pos )
-            {
-                m_v1 = m_v2;
-                m_v2.pos = pos;
-            }
-
-            for ( ArcIterator it( cx2.stepCount, false ); !it.isDone(); ++it )
-            {
-                l = setGradientLines( l );
-                setContourLine( l++ );
-
-                m_v1 = m_v2;
-                m_v2.from = c3.yInner( it.sin() );
-                m_v2.to = c4.yInner( it.sin() );
-                m_v2.pos = cx2.xInner( it.cos() );
-            }
-
-            return l;
-        }
-
-        ColoredLine* fillBoxV( const QskRoundedRect::Metrics& metrics, ColoredLine* lines )
-        {
-            using namespace QskRoundedRect;
-
-            const auto& c1 = metrics.corners[ TopLeft ];
-            const auto& c2 = metrics.corners[ TopRight ];
-            const auto& c3 = metrics.corners[ BottomLeft ];
-            const auto& c4 = metrics.corners[ BottomRight ];
-
-            const auto& cy1 = ( c1.stepCount > c2.stepCount ) ? c1 : c2;
-            const auto& cy2 = ( c3.stepCount > c4.stepCount ) ? c3 : c4;
-
-            m_t0 = m_dir.y1();
-            m_dt = m_dir.dy();
-
-            m_v1.from = c1.xInner( 1.0 );
-            m_v1.to = c2.xInner( 1.0 );
-            m_v1.pos = metrics.innerQuad.top;
-
-            m_v2 = m_v1;
-
-            ColoredLine* l = lines;
-
-            for ( ArcIterator it( cy1.stepCount, false ); !it.isDone(); ++it )
-            {
-                setContourLine( l++ );
-
-                m_v1 = m_v2;
-                m_v2.from = c1.xInner( it.cos() );
-                m_v2.to = c2.xInner( it.cos() );
-                m_v2.pos = cy1.yInner( it.sin() );
-
-                l = setGradientLines( l );
-            }
-
-            const auto pos = cy2.yInner( 0.0 );
-            if ( m_v2.pos < pos )
-            {
-                m_v1 = m_v2;
-                m_v2.pos = pos;
-            }
-
-            for ( ArcIterator it( cy2.stepCount, true ); !it.isDone(); ++it )
-            {
-                l = setGradientLines( l );
-                setContourLine( l++ );
-
-                m_v1 = m_v2;
-                m_v2.from = c3.xInner( it.cos() );
-                m_v2.to = c4.xInner( it.cos() );
-                m_v2.pos = cy2.yInner( it.sin() );
-            }
-
-            return l;
         }
 
         inline ColoredLine* setGradientLines( ColoredLine* lines )
@@ -205,8 +186,7 @@ namespace
                 line->setLine( pos, from, pos, to, color );
         }
 
-        const QskLinearDirection m_dir;
-        const bool m_isVertical;
+        bool m_isVertical;
         qreal m_t0, m_dt;
 
         GradientIterator m_gradientIterator;
@@ -215,11 +195,7 @@ namespace
             position of the previous and following contour line, so that
             the positions of the gradiet lines in between can be calculated.
          */
-        struct
-        {
-            qreal from, to; // opposite to the direction of the gradient
-            qreal pos;      // in direction of the gradient
-        } m_v1, m_v2;
+        Value m_v1, m_v2;
     };
 }
 
@@ -343,8 +319,8 @@ void QskRoundedRectRenderer::renderRect( const QRectF& rect,
 
         if ( fillCount )
         {
-            Filler filler( gradient );
-            filler.fillBox( metrics, fillCount, lines );
+            Filler filler;
+            filler.fillBox( metrics, gradient, fillCount, lines );
         }
 
         if ( borderCount )

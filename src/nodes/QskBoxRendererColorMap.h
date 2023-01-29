@@ -99,6 +99,8 @@ namespace QskVertex
     class GradientIterator
     {
       public:
+        GradientIterator() = default;
+
         inline GradientIterator( const Color color )
             : m_color1( color )
             , m_color2( color )
@@ -119,6 +121,28 @@ namespace QskVertex
             , m_pos2( m_pos1 )
             , m_index( 0 )
         {
+        }
+
+        inline void reset( const Color color )
+        {
+            m_index = -1;
+            m_color1 = m_color2 = color;
+        }
+
+        inline void reset( const Color& color1, const Color& color2 )
+        {
+            m_index = -1;
+            m_color1 = color1;
+            m_color2 = color2;
+        }
+
+        inline void reset( const QskGradientStops& stops )
+        {
+            m_stops = stops;
+
+            m_index = 0;
+            m_color1 = m_color2 = stops.first().rgb();
+            m_pos1 = m_pos2 = stops.first().position();
         }
 
         inline qreal position() const
@@ -178,7 +202,7 @@ namespace QskVertex
         }
 
       private:
-        const QskGradientStops m_stops;
+        QskGradientStops m_stops;
 
         Color m_color1, m_color2;
 
