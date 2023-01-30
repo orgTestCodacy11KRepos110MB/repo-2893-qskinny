@@ -32,37 +32,50 @@ namespace
     class ContourIterator
     {
       public:
-        inline ContourIterator( const Metrics::Corner& c1,
-                const Metrics::Corner& c2, bool isVertical, bool isOpen )
-            : m_isVertical( isVertical )
-            , m_c1( c1 )
-            , m_c2( c2 )
-            , m_c3( ( c1.stepCount > c2.stepCount ) ? c1 : c2 )
+        ContourIterator( const Metrics& metrics )
+            : m_metrics( metrics )
         {
-            m_it.reset( m_c3.stepCount, isVertical != isOpen );
         }
 
-        inline void operator++() { ++m_it; }
-        inline bool isDone() const { return m_it.isDone(); }
+        inline void reset( int c1, int c2, bool isOpen )
+        {
+            m_isVertical = ( c1 == BottomLeft ) || ( c2 == TopRight );
+            m_c1 = c1;
+            m_c2 = c2;
+
+            const auto cn = m_metrics.corners;
+            m_c3 = ( cn[c1].stepCount > cn[c2].stepCount ) ? c1 : c2;
+
+            m_it.reset( cn[m_c3].stepCount, m_isVertical != isOpen );
+        }
+
+        inline bool advance()
+        {
+            ++m_it;
+            return !m_it.isDone();
+        }
 
         inline Value value() const
         {
             const auto cos = m_it.cos();
             const auto sin = m_it.sin();
 
+            const auto& c1 = m_metrics.corners[ m_c1 ];
+            const auto& c2 = m_metrics.corners[ m_c2 ];
+            const auto& c3 = m_metrics.corners[ m_c3 ];
+
             if ( m_isVertical )
-                return { m_c1.xInner( cos ), m_c2.xInner( cos ), m_c3.yInner( sin ) };
+                return { c1.xInner( cos ), c2.xInner( cos ), c3.yInner( sin ) };
             else
-                return { m_c1.yInner( sin ), m_c2.yInner( sin ), m_c3.xInner( cos ) };
+                return { c1.yInner( sin ), c2.yInner( sin ), c3.xInner( cos ) };
         }
 
       private:
-        const bool m_isVertical;
+        const Metrics& m_metrics;
 
-        const Metrics::Corner& m_c1;
-        const Metrics::Corner& m_c2;
-        const Metrics::Corner& m_c3;
+        bool m_isVertical;
 
+        int m_c1, m_c2, m_c3;
         ArcIterator m_it;
     };
 
@@ -97,40 +110,42 @@ namespace
                 m_dt = dir.dx();
             }
 
-            m_gradientIterator.reset( gradient.stops() );
-
             ColoredLine* l = lines;
+            Value v1, v2;
 
-            const auto cn = metrics.corners;
-            ContourIterator it1( cn[ corners[0] ], cn[ corners[1] ], m_isVertical, true );
-            ContourIterator it2( cn[ corners[2] ], cn[ corners[3] ], m_isVertical, false );
+            m_gradientIterator.reset( gradient.stops() );
+            ContourIterator it( metrics );
 
-            m_v2 = it1.value();
+            it.reset( corners[0], corners[1], true );
 
-            for ( ; !it1.isDone(); ++it1 )
+            v2 = it.value();
+
+            skipGradientLines( v2.pos );
+            setContourLine( v2, l++ );
+
+            while( it.advance() )
             {
-                m_v1 = m_v2;
-                m_v2 = it1.value();
+                v1 = v2;
+                v2 = it.value();
 
-                setContourLine( l++ );
-                l = setGradientLines( l );
-            }
+                l = setGradientLines( v1, v2, l );
+                setContourLine( v2, l++ );
+            };
 
-            const auto pos = it2.value().pos;
-            if ( m_v2.pos < pos )
+            it.reset( corners[2], corners[3], false );
+
+            if ( it.value().pos <= v2.pos ) // ellipse
+                it.advance();
+
+            do
             {
-                m_v1 = m_v2;
-                m_v2.pos = pos;
-            }
+                v1 = v2;
+                v2 = it.value();
 
-            for ( ; !it2.isDone(); ++it2 )
-            {
-                l = setGradientLines( l );
-                setContourLine( l++ );
+                l = setGradientLines( v1, v2, l );
+                setContourLine( v2, l++ );
 
-                m_v1 = m_v2;
-                m_v2 = it2.value();
-            }
+            } while( it.advance() );
 
             if ( lineCount >= 0 )
             {
@@ -143,26 +158,35 @@ namespace
             }
         }
 
-        inline ColoredLine* setGradientLines( ColoredLine* lines )
+        inline void skipGradientLines( qreal pos )
+        {
+            while ( !m_gradientIterator.isDone() )
+            {
+                if ( m_t0 + m_gradientIterator.position() * m_dt > pos )
+                    return;
+
+                m_gradientIterator.advance();
+            }
+        }
+
+        inline ColoredLine* setGradientLines(
+            const Value& v1, const Value& v2, ColoredLine* lines )
         {
             while ( !m_gradientIterator.isDone() )
             {
                 const auto pos = m_t0 + m_gradientIterator.position() * m_dt;
 
-                if ( pos >= m_v2.pos )
+                if ( pos >= v2.pos || qFuzzyIsNull( pos - v2.pos ) )
                     return lines;
 
-                if ( pos > m_v1.pos  )
-                {
-                    const auto color = m_gradientIterator.color();
+                const auto color = m_gradientIterator.color();
 
-                    const qreal f = ( pos - m_v1.pos ) / ( m_v2.pos - m_v1.pos );
+                const qreal f = ( pos - v1.pos ) / ( v2.pos - v1.pos );
 
-                    const qreal v1 = m_v1.from + f * ( m_v2.from - m_v1.from );
-                    const qreal v2 = m_v1.to + f * ( m_v2.to - m_v1.to );
+                const qreal t1 = v1.from + f * ( v2.from - v1.from );
+                const qreal t2 = v1.to + f * ( v2.to - v1.to );
 
-                    setLine( v1, v2, pos, color, lines++ );
-                }
+                setLine( t1, t2, pos, color, lines++ );
 
                 m_gradientIterator.advance();
             }
@@ -170,10 +194,10 @@ namespace
             return lines;
         }
 
-        inline void setContourLine( ColoredLine* line )
+        inline void setContourLine( const Value& v, ColoredLine* line )
         {
-            const auto color = m_gradientIterator.colorAt( ( m_v2.pos - m_t0 ) / m_dt );
-            setLine( m_v2.from, m_v2.to, m_v2.pos, color, line );
+            const auto color = m_gradientIterator.colorAt( ( v.pos - m_t0 ) / m_dt );
+            setLine( v.from, v.to, v.pos, color, line );
         }
 
       private:
@@ -190,12 +214,6 @@ namespace
         qreal m_t0, m_dt;
 
         GradientIterator m_gradientIterator;
-
-        /*
-            position of the previous and following contour line, so that
-            the positions of the gradiet lines in between can be calculated.
-         */
-        Value m_v1, m_v2;
     };
 }
 

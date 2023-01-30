@@ -276,12 +276,30 @@ namespace
 
         inline void increment()
         {
-            const double cos0 = m_cos;
+            if ( ++m_stepIndex >= m_stepCount )
+            {
+                if ( m_stepIndex == m_stepCount )
+                {
+                    // avoid rounding errors at the end
+                    if ( m_inverted )
+                    {
+                        m_cos = 0.0;
+                        m_sin = -1.0;
+                    }
+                    else
+                    {
+                        m_cos = 1.0;
+                        m_sin = 0.0;
+                    }
+                }
+            }
+            else
+            {
+                const double cos0 = m_cos;
 
-            m_cos = m_cos * m_cosStep + m_sin * m_sinStep;
-            m_sin = m_sin * m_cosStep - cos0 * m_sinStep;
-
-            ++m_stepIndex;
+                m_cos = m_cos * m_cosStep + m_sin * m_sinStep;
+                m_sin = m_sin * m_cosStep - cos0 * m_sinStep;
+            }
         }
 
         inline void operator++() { increment(); }
