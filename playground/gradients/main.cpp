@@ -120,9 +120,30 @@ namespace
             setVector( QLineF( 0, 0, 1, 0 ) );
 #if 1
             setColors( { Qt::green, Qt::red, Qt::yellow, Qt::cyan, Qt::darkCyan } );
-#else
-
+#endif
+#if 0
             setStops( { { 0.0, Qt::red }, { 1.0, Qt::blue } } );
+#endif
+#if 0
+            QVector< QColor > colors;
+
+            for ( int j = 0; j < 5; j++ )
+            {
+                for ( int i = 1; i <= 100; i++ )
+                {
+                    const int v = 255.0 / i;
+                    colors += qRgb( v, 100, 100 );
+                    colors += qRgb( 100, v, 100 );
+                    colors += qRgb( 100, 100, v );
+                }
+            }
+
+            QskGradientStops stops;
+
+            for ( int i = 0; i < colors.size(); i++ )
+                stops += { i * ( 1.0 / colors.size() ), colors[i] };
+
+            setStops( stops );
 #endif
         }
 
