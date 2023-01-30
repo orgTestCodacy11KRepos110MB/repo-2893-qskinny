@@ -176,7 +176,7 @@ namespace
             {
                 const auto pos = m_t0 + m_gradientIterator.position() * m_dt;
 
-                if ( pos >= v2.pos || qFuzzyIsNull( pos - v2.pos ) )
+                if ( pos >= v2.pos )
                     return lines;
 
                 const auto color = m_gradientIterator.color();
