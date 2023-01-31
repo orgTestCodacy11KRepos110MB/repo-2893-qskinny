@@ -42,82 +42,6 @@ namespace
         } p1, p2;
     };
 
-    class ValueCurve
-    {
-      public:
-        ValueCurve( const QskRoundedRect::Metrics& m )
-        {
-            /*
-                The slopes of the value line and those for the fill lines.
-             */
-            const qreal mv = -( m.innerQuad.width / m.innerQuad.height );
-            const qreal md = m.innerQuad.height / m.innerQuad.width;
-
-            /*
-                first we find the point, where the tangent line
-                with the slope of md touches the top left border
-                of the ellipse around the top left corner point
-             */
-
-            qreal xt, yt;
-            {
-                const auto& c = m.corners[ Qt::TopLeftCorner ];
-
-                const qreal k = c.radiusInnerY / c.radiusInnerX * md;
-                const qreal u = ::sqrt( 1.0 + k * k );
-
-                const qreal dx = c.radiusInnerX / u;
-                const qreal dy = ::sqrt( 1.0 - 1.0 / ( u * u ) ) * c.radiusInnerY;
-
-                xt = c.centerX - dx;
-                yt = c.centerY - dy;
-            }
-
-            /*
-                the cutting point between the tangent and the diagonal of the
-                fill rectangle is the origin of our line, where we iterate
-                the values along.
-             */
-
-            qreal left, top, right;
-            {
-                const auto& r = m.innerQuad;
-
-                left = ( yt - r.top - mv * xt + md * r.left ) / ( md - mv );
-
-                const qreal dx = left - r.left;
-
-                top = r.top + md * dx;
-                right = r.right - dx;
-            }
-
-            /*
-                Finally we can precalculate the coefficients needed for
-                evaluating points in valueAt.
-             */
-
-            {
-                const qreal k = mv + 1.0 / mv;
-                const qreal r = top + left / mv;
-                const qreal w = right - left;
-
-                m_coeff_0 = ( r / k - left ) / w;
-                m_coeff_y = -1.0 / ( k * w );
-                m_coeff_x = -mv * m_coeff_y;
-            }
-        }
-
-        inline qreal valueAt( qreal x, qreal y ) const
-        {
-            // The value, where the perpendicular runs through x,y
-
-            return m_coeff_0 + x * m_coeff_x + y * m_coeff_y;
-        }
-
-      private:
-        qreal m_coeff_0, m_coeff_x, m_coeff_y;
-    };
-
     class ContourIterator
     {
       public:
@@ -171,7 +95,7 @@ namespace
 
         inline void advance(
             const QskRoundedRect::Metrics& metrics,
-            const ValueCurve& curve )
+            const QskLinearDirection& dir )
         {
             if ( m_isDone )
                 return;
@@ -309,7 +233,7 @@ namespace
                 }
             }
 
-            p.v = curve.valueAt( p.x, p.y );
+            p.v = dir.valueAt( p.x, p.y );
 
             if ( ( p.v > 0.5 ) && ( p.v < m_contourLine.p1.v ) )
             {
@@ -417,9 +341,9 @@ namespace
     {
       public:
         OutlineIterator( const QskRoundedRect::Metrics& metrics,
-                const ValueCurve& curve, bool clockwise )
+                const QskLinearDirection& dir, bool clockwise )
             : m_metrics( metrics )
-            , m_curve( curve )
+            , m_dir( dir )
         {
             const auto& c = metrics.corners[ Qt::TopLeftCorner ];
 
@@ -440,7 +364,7 @@ namespace
 
             qreal x1 = c.centerX;
             qreal y1 = metrics.innerQuad.top;
-            qreal v1 = m_curve.valueAt( x1, y1 );
+            qreal v1 = m_dir.valueAt( x1, y1 );
 
             for ( int step = 1;; step++ )
             {
@@ -449,7 +373,7 @@ namespace
 
                 const qreal x2 = c.centerX - c.radiusInnerX * cos2;
                 const qreal y2 = c.centerY - c.radiusInnerY * sin2;
-                const qreal v2 = m_curve.valueAt( x2, y2 );
+                const qreal v2 = m_dir.valueAt( x2, y2 );
 
                 if ( v2 >= v1 || step >= c.stepCount )
                 {
@@ -473,7 +397,7 @@ namespace
                     while ( !m_iterator[ 1 ].isDone() &&
                         ( m_iterator[ 0 ].value() > m_iterator[ 1 ].value() ) )
                     {
-                        m_iterator[ 1 ].advance( metrics, m_curve );
+                        m_iterator[ 1 ].advance( metrics, m_dir );
                     }
 
                     return;
@@ -490,7 +414,7 @@ namespace
 
         inline void advance()
         {
-            m_iterator[ 0 ].advance( m_metrics, m_curve );
+            m_iterator[ 0 ].advance( m_metrics, m_dir );
 
             if ( !m_iterator[ 0 ].isDone() )
             {
@@ -504,7 +428,7 @@ namespace
                 while ( !m_iterator[ 1 ].isDone() &&
                     ( m_iterator[ 0 ].value() > m_iterator[ 1 ].value() ) )
                 {
-                    m_iterator[ 1 ].advance( m_metrics, m_curve );
+                    m_iterator[ 1 ].advance( m_metrics, m_dir );
                 }
             }
         }
@@ -554,7 +478,7 @@ namespace
         }
 
         const QskRoundedRect::Metrics& m_metrics;
-        const ValueCurve& m_curve;
+        const QskLinearDirection& m_dir;
 
         /*
             The first iterator for running along the left or right
@@ -568,9 +492,9 @@ namespace
     {
       public:
         DRectellipseIterator(
-                const QskRoundedRect::Metrics& metrics, const ValueCurve& curve )
-            : m_left( metrics, curve, false )
-            , m_right( metrics, curve, true )
+                const QskRoundedRect::Metrics& metrics, const QskLinearDirection& dir )
+            : m_left( metrics, dir, false )
+            , m_right( metrics, dir, true )
         {
             m_next = ( m_left.value() < m_right.value() ) ? &m_left : &m_right;
         }
@@ -608,9 +532,7 @@ namespace
 void QskRoundedRectRenderer::renderDiagonalFill( const QskRoundedRect::Metrics& metrics,
     const QskGradient& gradient, int fillLineCount, QskVertex::ColoredLine* lines )
 {
-    const ValueCurve curve( metrics );
-
-    DRectellipseIterator it( metrics, curve );
+    DRectellipseIterator it( metrics, gradient.linearDirection() );
     GradientIterator gradientIt( gradient.stops() );
 
     const auto pos1 = it.valueBegin();
